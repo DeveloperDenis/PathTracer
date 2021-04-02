@@ -19,6 +19,16 @@
 #define COLOUR_GREEN v4f(0.0f, 1.0f, 0.0f)
 #define COLOUR_CYAN v4f(0.0f, 1.0f, 1.0f)
 
+struct Ray
+{
+    Ray(v3f rayOrigin, v3f rayDir) : origin(rayOrigin), dir(rayDir) {}
+    
+    v3f at(f32 t) { return origin + dir*t; }
+    
+    v3f origin;
+    v3f dir;
+};
+
 struct Sphere
 {
     v3f pos;
@@ -64,8 +74,8 @@ int main(int argc, char** argv)
     fillImage(&image, COLOUR_WHITE);
     
     Sphere sphere = {};
-    sphere.pos = v3f(0.5f, -0.1f, -2.0f);
-    sphere.radius = 0.5f;
+    sphere.pos = v3f(0.5f, -0.1f, -3.0f);
+    sphere.radius = 1.5f;
     
     // NOTE: we use a Y up coordinate system where +X is to the right and the camera points
     // into the negative Z direction
@@ -91,28 +101,64 @@ int main(int argc, char** argv)
         {
             v3f imagePlanePoint = v3f(imagePlaneX, imagePlaneY, -focalLength);
             
-            v3f rayOrigin = cameraPos;
-            v3f rayDirection = normalize(imagePlanePoint - cameraPos);
+            Ray ray = Ray(cameraPos, normalize(imagePlanePoint - cameraPos));
+            
+            f32 t = F32_MIN;
             
             // sphere intersection test
-            f32 a = dot(rayDirection, rayDirection);
-            f32 b = 2*dot(rayDirection, rayOrigin - sphere.pos);
-            f32 c = dot(rayOrigin - sphere.pos, rayOrigin - sphere.pos) - sphere.radius*sphere.radius;
+            f32 a = dot(ray.dir, ray.dir);
+            f32 b = 2*dot(ray.dir, ray.origin - sphere.pos);
+            f32 c = dot(ray.origin - sphere.pos, ray.origin - sphere.pos) - sphere.radius*sphere.radius;
             
             f32 discriminant = b*b - 4*a*c;
-            if (discriminant >= 0)
+            if (discriminant > 0)
             {
-                // sphere collided!
+                // two sphere collision points
                 
-                // TODO: actually calculate intersection point! for now I will just fill
-                // with a colour
-                setPixel(&image, imageX, imageY, COLOUR_RED);
+                f32 rootValue = (f32)sqrt(discriminant);
+                
+                f32 t1 = (-b + rootValue) / (2*a);
+                f32 t2 = (-b - rootValue) / (2*a);
+                
+                // NOTE: right now I don't render spheres that are behind or straddling the
+                // camera. Not sure if the second case is something I should handle or not.
+                if (t1 > 0 && t2 > 0)
+                {
+                    t = MIN_VALUE(t1, t2);
+                    
+                    // TODO: this is a duplicate of the below code, so I should probably
+                    // refactor this out
+                    v3f intersectPoint = ray.at(t);
+                    v3f normal = intersectPoint - sphere.pos;
+                    
+                    // for now the colour will just be normal value
+                    v4f colour = v4f(normalize(normal));
+                    colour = 0.5f*(colour + v4f(1.0f, 1.0f, 1.0f, 1.0f));
+                    setPixel(&image, imageX, imageY, colour);
+                }
             }
-            else
+            else if (discriminant == 0)
             {
-                // rendering a simple gradient
-                f32 t = 0.5f*(rayDirection.y + 1.0f);
-                v4f colour = (1.0f - t)*COLOUR_WHITE + t*COLOUR_CYAN;
+                // one sphere collision point
+                t = -b / (2*a);
+                
+                if (t > 0)
+                {
+                    v3f intersectPoint = ray.at(t);
+                    v3f normal = intersectPoint - sphere.pos;
+                    
+                    // for now the colour will just be normal value
+                    v4f colour = v4f(normalize(normal));
+                    colour = 0.5f*(colour + v4f(1.0f, 1.0f, 1.0f, 1.0f));
+                    setPixel(&image, imageX, imageY, colour);
+                }
+            }
+            
+            // if no collisions we draw a simple gradient
+            if (t < 0)
+            {
+                f32 ratio = 0.5f*(ray.dir.y + 1.0f);
+                v4f colour = (1.0f - ratio)*COLOUR_WHITE + ratio*COLOUR_CYAN;
                 setPixel(&image, imageX, imageY, colour);
             }
             

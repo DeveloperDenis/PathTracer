@@ -3,6 +3,13 @@
 
 #include <stdint.h>
 
+// copied from float.h file
+#define F32_MAX 3.402823466e+38F
+#define F32_MIN -3.402823466e+38F
+
+#define MAX_VALUE(value1, value2) ((value1) < (value2) ? (value2) : (value1))
+#define MIN_VALUE(value1, value2) ((value1) < (value2) ? (value1) : (value2))
+
 typedef float f32;
 typedef double f64;
 
@@ -31,7 +38,16 @@ union v3f
     };
     f32 e[3];
     
-    v3f operator-(v3f& v)
+    v3f operator+(v3f v)
+    {
+        v3f result;
+        result.x = x + v.x;
+        result.y = y + v.y;
+        result.z = z + v.z;
+        return result;
+    }
+    
+    v3f operator-(v3f v)
     {
         v3f result = v3f();
         result.x = x - v.x;
@@ -80,6 +96,7 @@ union v4f
     v4f() : x(0), y(0), z(0), w(0) {}
     v4f(f32 xVal, f32 yVal, f32 zVal) : x(xVal), y(yVal), z(zVal), w(1.0) {}
     v4f(f32 xVal, f32 yVal, f32 zVal, f32 wVal) : x(xVal), y(yVal), z(zVal), w(wVal) {}
+    explicit v4f(v3f v) : x(v.x), y(v.y), z(v.z), w(1.0) {}
     
     struct
     {
