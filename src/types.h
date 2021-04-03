@@ -133,6 +133,17 @@ union v4f
         result.w = w*value;
         return result;
     }
+    
+    v4f operator/(f32 value)
+    {
+        return *this * (1.0f/value);
+    }
+    
+    v4f& operator+=(v4f right)
+    {
+        *this = *this + right;
+        return *this;
+    }
 };
 
 v4f operator*(f32 value, v4f v)

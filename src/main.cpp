@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <assert.h>
 
 #define WIN32_LEAN_AND_MEAN
@@ -11,6 +12,9 @@
 #include "file_io.h"
 
 #define FILE_EXT ".bmp"
+// the higher this value is, the less aliasing in the final image
+// but it will drastically increase the render time
+#define SAMPLES_PER_PIXEL 16
 // TODO: put this in a Colour struct or something? so I can do Colour::White, etc.
 #define COLOUR_WHITE v4f(1.0f, 1.0f, 1.0f)
 #define COLOUR_BLACK v4f(0.0f, 0.0f, 0.0f)
@@ -34,6 +38,43 @@ struct Sphere
     v3f pos;
     f32 radius;
 };
+
+f32 sphereIntersection(Ray* ray, Sphere* sphere)
+{
+    f32 tResult = F32_MIN;
+    
+    // TODO: could reduce number of calculations if I precalculate some values and simplify
+    // the quadratic formula by doing some substitution and working it out
+    f32 a = 1; //dot(ray.dir, ray.dir); not needed because ray.dir is normalized
+    f32 b = 2*dot(ray->dir, ray->origin - sphere->pos);
+    f32 c = dot(ray->origin - sphere->pos, ray->origin - sphere->pos) - sphere->radius*sphere->radius;
+    
+    f32 discriminant = b*b - 4*a*c;
+    if (discriminant > 0)
+    {
+        // two sphere collision points
+        
+        f32 rootValue = (f32)sqrt(discriminant);
+        
+        // NOTE: We only really need the closest intersection point, and if it is negative,
+        // then we don't want to draw the sphere anyway because it's either behind the camera
+        // or envelopping the camera
+        tResult = (-b - rootValue) / (2*a);
+    }
+    else if (discriminant == 0)
+    {
+        // one sphere collision point
+        tResult = -b / (2*a);
+    }
+    
+    return tResult;
+}
+
+// returns a random value in the range [0, 1)
+static inline f32 randomF32()
+{
+    return (f32)rand() / (RAND_MAX + 1.0f);
+}
 
 static inline void setPixel(Image* image, u32 x, u32 y, v4f colour)
 {
@@ -71,11 +112,27 @@ int main(int argc, char** argv)
     image.height = 400;
     image.pixels = (v4f*)allocMemory(sizeof(v4f)*image.width*image.height);
     
-    fillImage(&image, COLOUR_WHITE);
+    fillImage(&image, COLOUR_BLACK);
     
-    Sphere sphere = {};
-    sphere.pos = v3f(0.5f, -0.1f, -3.0f);
-    sphere.radius = 1.5f;
+    Sphere sphereList[3];
+    {
+        Sphere sphere = {};
+        sphere.pos = v3f(0.5f, -0.1f, -3.0f);
+        sphere.radius = 1.5f;
+        sphereList[0] = sphere;
+    }
+    {
+        Sphere sphere = {};
+        sphere.pos = v3f(-1.0f, 0.4f, -4.0f);
+        sphere.radius = 1.5f;
+        sphereList[1] = sphere;
+    }
+    {
+        Sphere sphere = {};
+        sphere.pos = v3f(0.0f, -102, -5.0f);
+        sphere.radius = 100.0f;
+        sphereList[2] = sphere;
+    }
     
     // NOTE: we use a Y up coordinate system where +X is to the right and the camera points
     // into the negative Z direction
@@ -90,77 +147,63 @@ int main(int argc, char** argv)
     f32 pixelSize = imagePlaneWidth/image.width;
     assert(imagePlaneWidth/image.width == imagePlaneHeight/image.height);
     
-    f32 startImagePlaneX = -imagePlaneWidth/2 + pixelSize/2; 
-    f32 startImagePlaneY = imagePlaneHeight/2 - pixelSize/2;
+    // top left of image plane
+    f32 startImagePlaneX = -imagePlaneWidth/2; 
+    f32 startImagePlaneY = imagePlaneHeight/2;
+    
     f32 imagePlaneX = startImagePlaneX;
     f32 imagePlaneY = startImagePlaneY;
     
-    for (u32 imageY = 0; imageY < image.height; ++imageY)
+    for (u32 pixelY = 0; pixelY < image.height; ++pixelY)
     {
-        for (u32 imageX = 0; imageX < image.width; ++imageX)
+        for (u32 pixelX = 0; pixelX < image.width; ++pixelX)
         {
-            v3f imagePlanePoint = v3f(imagePlaneX, imagePlaneY, -focalLength);
+            v4f pixelColour = v4f();
             
-            Ray ray = Ray(cameraPos, normalize(imagePlanePoint - cameraPos));
-            
-            f32 t = F32_MIN;
-            
-            // sphere intersection test
-            f32 a = dot(ray.dir, ray.dir);
-            f32 b = 2*dot(ray.dir, ray.origin - sphere.pos);
-            f32 c = dot(ray.origin - sphere.pos, ray.origin - sphere.pos) - sphere.radius*sphere.radius;
-            
-            f32 discriminant = b*b - 4*a*c;
-            if (discriminant > 0)
+            for (u32 sampleIndex = 0; sampleIndex < SAMPLES_PER_PIXEL; ++sampleIndex)
             {
-                // two sphere collision points
+                f32 u = randomF32()*pixelSize;
+                f32 v = randomF32()*pixelSize;
                 
-                f32 rootValue = (f32)sqrt(discriminant);
+                v3f imagePlanePoint = v3f(imagePlaneX + u, imagePlaneY - v, -focalLength);
                 
-                f32 t1 = (-b + rootValue) / (2*a);
-                f32 t2 = (-b - rootValue) / (2*a);
+                Ray ray = Ray(cameraPos, normalize(imagePlanePoint - cameraPos));
                 
-                // NOTE: right now I don't render spheres that are behind or straddling the
-                // camera. Not sure if the second case is something I should handle or not.
-                if (t1 > 0 && t2 > 0)
+                f32 tClosest = F32_MAX;
+                v3f intersectNormal = v3f();
+                v3f intersectPoint = v3f();
+                
+                for (u32 i = 0; i < sizeof(sphereList)/sizeof(Sphere); ++i)
                 {
-                    t = MIN_VALUE(t1, t2);
+                    Sphere* sphere = sphereList + i;
+                    f32 t = sphereIntersection(&ray, sphere);
                     
-                    // TODO: this is a duplicate of the below code, so I should probably
-                    // refactor this out
-                    v3f intersectPoint = ray.at(t);
-                    v3f normal = intersectPoint - sphere.pos;
-                    
-                    // for now the colour will just be normal value
-                    v4f colour = v4f(normalize(normal));
-                    colour = 0.5f*(colour + v4f(1.0f, 1.0f, 1.0f, 1.0f));
-                    setPixel(&image, imageX, imageY, colour);
+                    if (t > 0 && t < tClosest)
+                    {
+                        tClosest = t;
+                        
+                        intersectPoint = ray.at(t);
+                        intersectNormal = normalize(intersectPoint - sphere->pos);
+                    }
                 }
-            }
-            else if (discriminant == 0)
-            {
-                // one sphere collision point
-                t = -b / (2*a);
                 
-                if (t > 0)
+                if (tClosest != F32_MAX && tClosest > 0)
                 {
-                    v3f intersectPoint = ray.at(t);
-                    v3f normal = intersectPoint - sphere.pos;
-                    
                     // for now the colour will just be normal value
-                    v4f colour = v4f(normalize(normal));
+                    v4f colour = v4f(intersectNormal);
                     colour = 0.5f*(colour + v4f(1.0f, 1.0f, 1.0f, 1.0f));
-                    setPixel(&image, imageX, imageY, colour);
+                    pixelColour += colour;
+                }
+                else
+                {
+                    // if no collisions we draw a simple gradient
+                    f32 ratio = 0.5f*(ray.dir.y + 1.0f);
+                    v4f colour = (1.0f - ratio)*COLOUR_WHITE + ratio*COLOUR_CYAN;
+                    pixelColour += colour;
                 }
             }
             
-            // if no collisions we draw a simple gradient
-            if (t < 0)
-            {
-                f32 ratio = 0.5f*(ray.dir.y + 1.0f);
-                v4f colour = (1.0f - ratio)*COLOUR_WHITE + ratio*COLOUR_CYAN;
-                setPixel(&image, imageX, imageY, colour);
-            }
+            setPixel(&image, pixelX, pixelY, pixelColour/SAMPLES_PER_PIXEL);
             
             imagePlaneX += pixelSize;
         }
