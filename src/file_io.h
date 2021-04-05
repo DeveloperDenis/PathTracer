@@ -31,6 +31,12 @@ static void write_image_to_bmp(char* fileName, Image* image)
     {
         v4f colour = image->pixels[i];
         
+        // NOTE: gamma correction for gamma = 2.0
+        colour.r = (f32)sqrt(colour.r);
+        colour.g = (f32)sqrt(colour.g);
+        colour.b = (f32)sqrt(colour.b);
+        colour.a = (f32)sqrt(colour.a);
+        
         u8 red = (u8)(255.0f*colour.r);
         u8 green = (u8)(255.0f*colour.g);
         u8 blue = (u8)(255.0f*colour.b);

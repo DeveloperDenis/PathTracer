@@ -12,9 +12,14 @@
 #include "file_io.h"
 
 #define FILE_EXT ".bmp"
+
 // the higher this value is, the less aliasing in the final image
 // but it will drastically increase the render time
-#define SAMPLES_PER_PIXEL 16
+#define SAMPLES_PER_PIXEL 32
+
+#define MAX_RAY_DEPTH 10
+
+
 // TODO: put this in a Colour struct or something? so I can do Colour::White, etc.
 #define COLOUR_WHITE v4f(1.0f, 1.0f, 1.0f)
 #define COLOUR_BLACK v4f(0.0f, 0.0f, 0.0f)
@@ -23,9 +28,19 @@
 #define COLOUR_GREEN v4f(0.0f, 1.0f, 0.0f)
 #define COLOUR_CYAN v4f(0.0f, 1.0f, 1.0f)
 
+static inline bool is_equal(f32 a, f32 b, f32 error = 0.0001f)
+{
+    return ABS_VALUE(a - b) <= error;
+}
+
 struct Ray
 {
-    Ray(v3f rayOrigin, v3f rayDir) : origin(rayOrigin), dir(rayDir) {}
+    Ray(v3f rayOrigin, v3f rayDir, bool normalized = true) 
+        : origin(rayOrigin), dir(rayDir)
+    {
+        if (!normalized)
+            rayDir = normalize(rayDir);
+    }
     
     v3f at(f32 t) { return origin + dir*t; }
     
@@ -39,7 +54,7 @@ struct Sphere
     f32 radius;
 };
 
-f32 sphereIntersection(Ray* ray, Sphere* sphere)
+f32 intersection_test(Ray* ray, Sphere* sphere)
 {
     f32 tResult = F32_MIN;
     
@@ -71,17 +86,48 @@ f32 sphereIntersection(Ray* ray, Sphere* sphere)
 }
 
 // returns a random value in the range [0, 1)
-static inline f32 randomF32()
+static inline f32 random_f32()
 {
     return (f32)rand() / (RAND_MAX + 1.0f);
 }
+// returns a random value in the range [min, max)
+static inline f32 random_f32(f32 min, f32 max)
+{
+    assert(min < max);
+    return random_f32() * (max - min) + min;
+}
 
-static inline void setPixel(Image* image, u32 x, u32 y, v4f colour)
+static inline v3f random_v3f()
+{
+    return v3f(random_f32(), random_f32(), random_f32());
+}
+static inline v3f random_v3f(f32 min, f32 max)
+{
+    return v3f(random_f32(min, max), random_f32(min, max), random_f32(min, max));
+}
+
+static v3f random_point_in_sphere(Sphere* sphere)
+{
+    v3f randomPoint = v3f();
+    bool found = false;
+    
+    while (!found)
+    {
+        randomPoint = random_v3f(-sphere->radius, sphere->radius);
+        
+        if (norm(randomPoint) <= sphere->radius)
+            found = true;
+    }
+    
+    return randomPoint + sphere->pos;
+}
+
+static inline void set_pixel(Image* image, u32 x, u32 y, v4f colour)
 {
     image->pixels[y*image->width + x] = colour;
 }
 
-static inline void fillImage(Image* image, v4f colour)
+static inline void fill_image(Image* image, v4f colour)
 {
     for (u32 i = 0; i < image->width*image->height; ++i)
     {
@@ -89,6 +135,58 @@ static inline void fillImage(Image* image, v4f colour)
     }
 }
 
+// returns colour of pixel after ray cast
+static v4f cast_ray(Ray* ray, Sphere* objectList, u32 numObjects, u32 maxDepth = 1)
+{
+    v4f resultColour = v4f();
+    
+    if (maxDepth <= 0)
+        return COLOUR_BLACK;
+    
+    const f32 MIN_T = 0.001f;
+    const f32 MAX_T = F32_MAX;
+    
+    f32 tClosest = F32_MAX;
+    v3f intersectNormal = v3f();
+    v3f intersectPoint = v3f();
+    
+    // checking for intersection
+    for (u32 i = 0; i < numObjects; ++i)
+    {
+        Sphere* sphere = objectList + i;
+        f32 t = intersection_test(ray, sphere);
+        
+        if (t > MIN_T && t < tClosest)
+        {
+            tClosest = t;
+            
+            intersectPoint = ray->at(t);
+            intersectNormal = normalize(intersectPoint - sphere->pos);
+        }
+    }
+    
+    // calculating colour for pixel
+    if (tClosest != F32_MAX && tClosest > 0)
+    {
+        Sphere diffuseSphere = {};
+        diffuseSphere.radius = 1.0f;
+        diffuseSphere.pos = intersectPoint + intersectNormal;
+        
+        v3f newRayTargetPos = random_point_in_sphere(&diffuseSphere);
+        
+        Ray reflectRay = Ray(intersectPoint, newRayTargetPos - intersectPoint, false);
+        // the 0.5 is the amount of light absorbed by the object on each bounce, 50% here
+        resultColour = 0.5f*cast_ray(&reflectRay, objectList, numObjects, maxDepth - 1);
+    }
+    else
+    {
+        // if no collisions we draw a simple gradient
+        f32 ratio = 0.5f*(ray->dir.y + 1.0f);
+        resultColour = (1.0f - ratio)*COLOUR_WHITE + ratio*COLOUR_CYAN;
+    }
+    
+    return resultColour;
+}
 
 int main(int argc, char** argv)
 {
@@ -100,19 +198,19 @@ int main(int argc, char** argv)
     }
     
     char* fileName = argv[1];
-    if (!stringEndsWith(fileName, FILE_EXT))
-        fileName = concatStrings(fileName, FILE_EXT);
+    if (!string_ends_with(fileName, FILE_EXT))
+        fileName = concat_strings(fileName, FILE_EXT);
     else
-        duplicateString(argv[1]);
+        duplicate_string(argv[1]);
     
     printf("File to save to: %s\n", fileName);
     
     Image image = {};
     image.width = 640;
     image.height = 400;
-    image.pixels = (v4f*)allocMemory(sizeof(v4f)*image.width*image.height);
+    image.pixels = (v4f*)memory_alloc(sizeof(v4f)*image.width*image.height);
     
-    fillImage(&image, COLOUR_BLACK);
+    fill_image(&image, COLOUR_BLACK);
     
     Sphere sphereList[3];
     {
@@ -162,48 +260,17 @@ int main(int argc, char** argv)
             
             for (u32 sampleIndex = 0; sampleIndex < SAMPLES_PER_PIXEL; ++sampleIndex)
             {
-                f32 u = randomF32()*pixelSize;
-                f32 v = randomF32()*pixelSize;
+                f32 u = random_f32()*pixelSize;
+                f32 v = random_f32()*pixelSize;
                 
                 v3f imagePlanePoint = v3f(imagePlaneX + u, imagePlaneY - v, -focalLength);
                 
                 Ray ray = Ray(cameraPos, normalize(imagePlanePoint - cameraPos));
                 
-                f32 tClosest = F32_MAX;
-                v3f intersectNormal = v3f();
-                v3f intersectPoint = v3f();
-                
-                for (u32 i = 0; i < sizeof(sphereList)/sizeof(Sphere); ++i)
-                {
-                    Sphere* sphere = sphereList + i;
-                    f32 t = sphereIntersection(&ray, sphere);
-                    
-                    if (t > 0 && t < tClosest)
-                    {
-                        tClosest = t;
-                        
-                        intersectPoint = ray.at(t);
-                        intersectNormal = normalize(intersectPoint - sphere->pos);
-                    }
-                }
-                
-                if (tClosest != F32_MAX && tClosest > 0)
-                {
-                    // for now the colour will just be normal value
-                    v4f colour = v4f(intersectNormal);
-                    colour = 0.5f*(colour + v4f(1.0f, 1.0f, 1.0f, 1.0f));
-                    pixelColour += colour;
-                }
-                else
-                {
-                    // if no collisions we draw a simple gradient
-                    f32 ratio = 0.5f*(ray.dir.y + 1.0f);
-                    v4f colour = (1.0f - ratio)*COLOUR_WHITE + ratio*COLOUR_CYAN;
-                    pixelColour += colour;
-                }
+                pixelColour += cast_ray(&ray, sphereList, ARRAY_LENGTH(sphereList), MAX_RAY_DEPTH);
             }
             
-            setPixel(&image, pixelX, pixelY, pixelColour/SAMPLES_PER_PIXEL);
+            set_pixel(&image, pixelX, pixelY, pixelColour/SAMPLES_PER_PIXEL);
             
             imagePlaneX += pixelSize;
         }
@@ -214,8 +281,8 @@ int main(int argc, char** argv)
     
     write_image_to_bmp(fileName, &image);
     
-    freeMemory(fileName);
-    freeMemory(image.pixels);
+    memory_free(fileName);
+    memory_free(image.pixels);
     
     return 0;
 }

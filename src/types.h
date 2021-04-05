@@ -10,6 +10,10 @@
 #define MAX_VALUE(value1, value2) ((value1) < (value2) ? (value2) : (value1))
 #define MIN_VALUE(value1, value2) ((value1) < (value2) ? (value1) : (value2))
 
+#define ABS_VALUE(value) ((value) < 0 ? (-(value)) : (value))
+
+#define ARRAY_LENGTH(array) (sizeof(array) / sizeof((array)[0]))
+
 typedef float f32;
 typedef double f64;
 
@@ -76,9 +80,22 @@ union v3f
     }
 };
 
+static inline f32 norm_squared(v3f v)
+{
+    return v.x*v.x + v.y*v.y + v.z*v.z;
+}
 static inline f32 norm(v3f v)
 {
     return (f32)sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+}
+
+static inline f32 distance_squared(v3f v1, v3f v2)
+{
+    return norm_squared(v2 - v1);
+}
+static inline f32 distance(v3f v1, v3f v2)
+{
+    return norm(v2 - v1);
 }
 
 static inline v3f normalize(v3f v)

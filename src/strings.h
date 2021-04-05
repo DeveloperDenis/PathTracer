@@ -1,7 +1,7 @@
 #ifndef STRINGS_H
 #define STRINGS_H
 
-static inline u32 getStringLength(char* str)
+static inline u32 string_length(char* str)
 {
     u32 length = 0;
     
@@ -13,13 +13,13 @@ static inline u32 getStringLength(char* str)
     return length;
 }
 
-static char* duplicateString(char* str)
+static char* duplicate_string(char* str)
 {
     if (!str || str[0] == 0)
         return 0;
     
-    u32 strLength = getStringLength(str);
-    char* result = (char*)allocMemory(strLength + 1);
+    u32 strLength = string_length(str);
+    char* result = (char*)memory_alloc(strLength + 1);
     
     for (u32 i = 0; str[i] != 0; ++i)
     {
@@ -30,18 +30,18 @@ static char* duplicateString(char* str)
 }
 
 // returns a newly allocated string that is the concatenation of str1 & str2
-static char* concatStrings(char* str1, char* str2)
+static char* concat_strings(char* str1, char* str2)
 {
     if (!str1 || str1[0] == 0)
-        return duplicateString(str2);
+        return duplicate_string(str2);
     if (!str2 || str2[0] == 0)
-        return duplicateString(str1);
+        return duplicate_string(str1);
     
-    u32 str1Length = getStringLength(str1);
-    u32 str2Length = getStringLength(str2);
+    u32 str1Length = string_length(str1);
+    u32 str2Length = string_length(str2);
     
     u32 index = 0;
-    char* result = (char*)allocMemory(str1Length + str2Length + 1);
+    char* result = (char*)memory_alloc(str1Length + str2Length + 1);
     
     while (index < str1Length)
     {
@@ -58,15 +58,15 @@ static char* concatStrings(char* str1, char* str2)
     return result;
 }
 
-static bool stringEndsWith(char* string, char* substring)
+static bool string_ends_with(char* string, char* substring)
 {
     bool result = true;
     
     if (!string || !substring || string[0] == 0 || substring[0] == 0)
         return false;
     
-    u32 length = getStringLength(string);
-    u32 substringLength = getStringLength(substring);
+    u32 length = string_length(string);
+    u32 substringLength = string_length(substring);
     
     if (substringLength > length)
         return false;
