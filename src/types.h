@@ -69,13 +69,17 @@ union v3f
         return result;
     }
     
-    // TODO: could just implement this by inverting the value and multiplying
     v3f operator/(f32 value)
     {
-        v3f result = v3f();
-        result.x = x / value;
-        result.y = y / value;
-        result.z = z / value;
+        return *this * (1.0f/value);
+    }
+    
+    v3f operator-()
+    {
+        v3f result = {};
+        result.x = -x;
+        result.y = -y;
+        result.z = -z;
         return result;
     }
 };
@@ -108,8 +112,18 @@ static inline f32 dot(v3f v1, v3f v2)
     return v1.x*v2.x + v1.y*v2.y + v1.z*v2.z;
 }
 
+static inline bool near_zero(v3f v)
+{
+    const f32 error = 1e-8f;
+    return ABS_VALUE(v.x) < error && ABS_VALUE(v.y) < error && ABS_VALUE(v.z) < error;
+}
+
 union v4f
 {
+    static v4f one() {
+        return v4f(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+    
     v4f() : x(0), y(0), z(0), w(0) {}
     v4f(f32 xVal, f32 yVal, f32 zVal) : x(xVal), y(yVal), z(zVal), w(1.0) {}
     v4f(f32 xVal, f32 yVal, f32 zVal, f32 wVal) : x(xVal), y(yVal), z(zVal), w(wVal) {}
@@ -141,6 +155,16 @@ union v4f
         return result;
     }
     
+    v4f operator-(v4f v)
+    {
+        v4f result;
+        result.x = x - v.x;
+        result.y = y - v.y;
+        result.z = z - v.z;
+        result.w = w - v.w;
+        return result;
+    }
+    
     v4f operator*(f32 value)
     {
         v4f result;
@@ -166,6 +190,16 @@ union v4f
 v4f operator*(f32 value, v4f v)
 {
     return v*value;
+}
+
+static inline v4f hadamard(v4f v1, v4f v2)
+{
+    v4f result = {};
+    result.x = v1.x * v2.x;
+    result.y = v1.y * v2.y;
+    result.z = v1.z * v2.z;
+    result.w = v1.w * v2.w;
+    return result;
 }
 
 struct Image

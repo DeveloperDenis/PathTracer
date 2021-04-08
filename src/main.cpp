@@ -19,7 +19,6 @@
 
 #define MAX_RAY_DEPTH 10
 
-
 // TODO: put this in a Colour struct or something? so I can do Colour::White, etc.
 #define COLOUR_WHITE v4f(1.0f, 1.0f, 1.0f)
 #define COLOUR_BLACK v4f(0.0f, 0.0f, 0.0f)
@@ -53,6 +52,38 @@ struct Sphere
     v3f pos;
     f32 radius;
 };
+
+struct Material
+{
+    // TODO: I don't know if I want to keep this as an enum, versus having something more
+    // like the Principled shader in Blender
+    enum Type
+    {
+        NONE,
+        DIFFUSE,
+        METAL
+            
+    };
+    
+    Type type;
+    v4f colour;
+};
+
+// TODO: Do i want each object to have it's own material, or do I want to have a master
+// material list that each object has an index into?
+struct RenderObject
+{
+    Material material;
+    Sphere geometry;
+};
+
+Material create_diffuse_material(v4f colour)
+{
+    Material result = {};
+    result.type = Material::Type::DIFFUSE;
+    result.colour = colour;
+    return result;
+}
 
 f32 intersection_test(Ray* ray, Sphere* sphere)
 {
@@ -106,17 +137,44 @@ static inline v3f random_v3f(f32 min, f32 max)
     return v3f(random_f32(min, max), random_f32(min, max), random_f32(min, max));
 }
 
-static v3f random_point_in_sphere(Sphere* sphere)
+static v3f random_point_in_unit_sphere()
 {
     v3f randomPoint = v3f();
     bool found = false;
     
     while (!found)
     {
-        randomPoint = random_v3f(-sphere->radius, sphere->radius);
+        randomPoint = random_v3f(-1.0f, 1.0f);
         
-        if (norm(randomPoint) <= sphere->radius)
+        if (norm(randomPoint) <= 1.0f)
             found = true;
+    }
+    
+    return randomPoint;
+}
+
+static v3f random_unit_vector()
+{
+    v3f randomPoint = random_point_in_unit_sphere();
+    randomPoint = normalize(randomPoint);
+    return randomPoint;
+}
+
+static v3f random_point_in_sphere(Sphere* sphere)
+{
+    v3f randomPoint = random_point_in_unit_sphere();
+    return randomPoint*sphere->radius + sphere->pos;
+}
+
+static v3f random_point_in_hemisphere(Sphere* sphere, v3f hemisphereNormal)
+{
+    v3f randomPoint = random_point_in_unit_sphere()*sphere->radius;
+    
+    // if the hemisphere is on the wrong side of the normal, we reflect the point about 
+    // the centre
+    if (dot(randomPoint, hemisphereNormal) < 0.0f)
+    {
+        randomPoint = -randomPoint;
     }
     
     return randomPoint + sphere->pos;
@@ -136,7 +194,7 @@ static inline void fill_image(Image* image, v4f colour)
 }
 
 // returns colour of pixel after ray cast
-static v4f cast_ray(Ray* ray, Sphere* objectList, u32 numObjects, u32 maxDepth = 1)
+static v4f cast_ray(Ray* ray, RenderObject* objectList, u32 numObjects, u32 maxDepth = 1)
 {
     v4f resultColour = v4f();
     
@@ -149,11 +207,13 @@ static v4f cast_ray(Ray* ray, Sphere* objectList, u32 numObjects, u32 maxDepth =
     f32 tClosest = F32_MAX;
     v3f intersectNormal = v3f();
     v3f intersectPoint = v3f();
+    Material* material = 0;
     
     // checking for intersection
     for (u32 i = 0; i < numObjects; ++i)
     {
-        Sphere* sphere = objectList + i;
+        RenderObject* object = objectList + i;
+        Sphere* sphere = &object->geometry;
         f32 t = intersection_test(ray, sphere);
         
         if (t > MIN_T && t < tClosest)
@@ -162,27 +222,28 @@ static v4f cast_ray(Ray* ray, Sphere* objectList, u32 numObjects, u32 maxDepth =
             
             intersectPoint = ray->at(t);
             intersectNormal = normalize(intersectPoint - sphere->pos);
+            material = &object->material;
         }
     }
     
     // calculating colour for pixel
     if (tClosest != F32_MAX && tClosest > 0)
     {
-        Sphere diffuseSphere = {};
-        diffuseSphere.radius = 1.0f;
-        diffuseSphere.pos = intersectPoint + intersectNormal;
+        v3f scatterDirection = random_unit_vector() + intersectNormal;
+        if (near_zero(scatterDirection + intersectNormal))
+            scatterDirection = intersectNormal;
         
-        v3f newRayTargetPos = random_point_in_sphere(&diffuseSphere);
+        Ray reflectRay = Ray(intersectPoint, scatterDirection, false);
+        v4f rayColour = cast_ray(&reflectRay, objectList, numObjects, maxDepth - 1);
         
-        Ray reflectRay = Ray(intersectPoint, newRayTargetPos - intersectPoint, false);
-        // the 0.5 is the amount of light absorbed by the object on each bounce, 50% here
-        resultColour = 0.5f*cast_ray(&reflectRay, objectList, numObjects, maxDepth - 1);
+        // attenuate using the colour of the material
+        resultColour = hadamard(material->colour, rayColour);
     }
     else
     {
         // if no collisions we draw a simple gradient
         f32 ratio = 0.5f*(ray->dir.y + 1.0f);
-        resultColour = (1.0f - ratio)*COLOUR_WHITE + ratio*COLOUR_CYAN;
+        resultColour = (1.0f - ratio)*COLOUR_WHITE + ratio*v4f(0.5f, 0.8f, 0.9f);
     }
     
     return resultColour;
@@ -212,24 +273,28 @@ int main(int argc, char** argv)
     
     fill_image(&image, COLOUR_BLACK);
     
-    Sphere sphereList[3];
+    RenderObject renderObjects[3];
+    
     {
-        Sphere sphere = {};
-        sphere.pos = v3f(0.5f, -0.1f, -3.0f);
-        sphere.radius = 1.5f;
-        sphereList[0] = sphere;
+        RenderObject object = {};
+        object.geometry.pos = v3f(0.5f, -0.1f, -3.0f);
+        object.geometry.radius = 1.5f;
+        object.material = create_diffuse_material(v4f(0.9f, 0.35f, 0.3f));
+        renderObjects[0] = object;
     }
     {
-        Sphere sphere = {};
-        sphere.pos = v3f(-1.0f, 0.4f, -4.0f);
-        sphere.radius = 1.5f;
-        sphereList[1] = sphere;
+        RenderObject object = {};
+        object.geometry.pos = v3f(-2.5f, 0.0f, -4.5f);
+        object.geometry.radius = 1.5f;
+        object.material = create_diffuse_material(v4f(0.5f, 0.3f, 0.8f));
+        renderObjects[1] = object;
     }
     {
-        Sphere sphere = {};
-        sphere.pos = v3f(0.0f, -102, -5.0f);
-        sphere.radius = 100.0f;
-        sphereList[2] = sphere;
+        RenderObject object = {};
+        object.geometry.pos = v3f(0.0f, -102, -5.0f);
+        object.geometry.radius = 100.0f;
+        object.material = create_diffuse_material(v4f(0.42f, 0.7f, 0.42f));
+        renderObjects[2] = object;
     }
     
     // NOTE: we use a Y up coordinate system where +X is to the right and the camera points
@@ -267,7 +332,7 @@ int main(int argc, char** argv)
                 
                 Ray ray = Ray(cameraPos, normalize(imagePlanePoint - cameraPos));
                 
-                pixelColour += cast_ray(&ray, sphereList, ARRAY_LENGTH(sphereList), MAX_RAY_DEPTH);
+                pixelColour += cast_ray(&ray, renderObjects, ARRAY_LENGTH(renderObjects), MAX_RAY_DEPTH);
             }
             
             set_pixel(&image, pixelX, pixelY, pixelColour/SAMPLES_PER_PIXEL);
