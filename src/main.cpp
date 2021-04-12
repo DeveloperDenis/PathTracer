@@ -308,14 +308,14 @@ int main(int argc, char** argv)
     else
         duplicate_string(argv[1]);
     
-    printf("File to save to: %s\n", fileName);
-    
     Image image = {};
     image.width = 640;
     image.height = 360;
     image.pixels = (v4f*)memory_alloc(sizeof(v4f)*image.width*image.height);
     
     fill_image(&image, COLOUR_BLACK);
+    
+    printf("Setting up rendering scene...\n");
     
     RenderObject renderObjects[4];
     
@@ -368,6 +368,9 @@ int main(int argc, char** argv)
     f32 imagePlaneX = startImagePlaneX;
     f32 imagePlaneY = startImagePlaneY;
     
+    printf("Ray-tracing begins...\n");
+    u32 finishedPercent = 0;
+    
     for (u32 pixelY = 0; pixelY < image.height; ++pixelY)
     {
         for (u32 pixelX = 0; pixelX < image.width; ++pixelX)
@@ -393,9 +396,22 @@ int main(int argc, char** argv)
         
         imagePlaneX = startImagePlaneX;
         imagePlaneY -= pixelSize;
+        
+        static const u32 TOTAL_ROWS = image.height;
+        u32 currentPercent = (u32)((f32)pixelY/TOTAL_ROWS * 100.0f);
+        if (currentPercent > finishedPercent)
+        {
+            finishedPercent = currentPercent;
+            printf("%d%%\n", currentPercent);
+        }
     }
     
+    printf("Ray-tracing finished!\n");
+    printf("Writing output to file: %s\n", fileName);
+    
     write_image_to_bmp(fileName, &image);
+    
+    printf("File output complete. Program finished.\n");
     
     memory_free(fileName);
     memory_free(image.pixels);
