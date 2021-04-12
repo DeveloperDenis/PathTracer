@@ -26,6 +26,7 @@
 #define COLOUR_BLUE v4f(0.0f, 0.0f, 1.0f)
 #define COLOUR_GREEN v4f(0.0f, 1.0f, 0.0f)
 #define COLOUR_CYAN v4f(0.0f, 1.0f, 1.0f)
+#define COLOUR_GOLD v4f(0.94f, 0.76f, 0.11f)
 
 static inline bool is_equal(f32 a, f32 b, f32 error = 0.0001f)
 {
@@ -67,6 +68,9 @@ struct Material
     
     Type type;
     v4f colour;
+    
+    // used by metal materials to control the fuzziness of reflections
+    f32 roughness;
 };
 
 // TODO: Do i want each object to have it's own material, or do I want to have a master
@@ -77,7 +81,7 @@ struct RenderObject
     Sphere geometry;
 };
 
-Material create_diffuse_material(v4f colour)
+static Material create_diffuse_material(v4f colour)
 {
     Material result = {};
     result.type = Material::Type::DIFFUSE;
@@ -85,7 +89,16 @@ Material create_diffuse_material(v4f colour)
     return result;
 }
 
-f32 intersection_test(Ray* ray, Sphere* sphere)
+static Material create_metal_material(v4f colour, f32 roughness = 0.0f)
+{
+    Material result = {};
+    result.type = Material::Type::METAL;
+    result.colour = colour;
+    result.roughness = roughness;
+    return result;
+}
+
+static f32 intersection_test(Ray* ray, Sphere* sphere)
 {
     f32 tResult = F32_MIN;
     
@@ -229,15 +242,46 @@ static v4f cast_ray(Ray* ray, RenderObject* objectList, u32 numObjects, u32 maxD
     // calculating colour for pixel
     if (tClosest != F32_MAX && tClosest > 0)
     {
-        v3f scatterDirection = random_unit_vector() + intersectNormal;
-        if (near_zero(scatterDirection + intersectNormal))
-            scatterDirection = intersectNormal;
+        assert(material);
         
-        Ray reflectRay = Ray(intersectPoint, scatterDirection, false);
-        v4f rayColour = cast_ray(&reflectRay, objectList, numObjects, maxDepth - 1);
-        
-        // attenuate using the colour of the material
-        resultColour = hadamard(material->colour, rayColour);
+        if (material->type == Material::Type::DIFFUSE)
+        {
+            v3f scatterDirection = random_unit_vector() + intersectNormal;
+            if (near_zero(scatterDirection + intersectNormal))
+                scatterDirection = intersectNormal;
+            
+            Ray reflectRay = Ray(intersectPoint, scatterDirection, false);
+            v4f rayColour = cast_ray(&reflectRay, objectList, numObjects, maxDepth - 1);
+            
+            // attenuate using the colour of the material
+            resultColour = hadamard(material->colour, rayColour);
+        }
+        else if (material->type == Material::Type::METAL)
+        {
+            // the reflected ray is calculated assuming the surface is a perfect mirror
+            f32 projectedDistance = -dot(ray->dir, intersectNormal);
+            v3f reflectedDir = ray->dir + 2.0f*intersectNormal*projectedDistance;
+            
+            if (material->roughness > 0.0f)
+            {
+                // we find a random point near the reflection point to make the reflection
+                // less clear
+                Sphere sphere = { intersectPoint + reflectedDir, material->roughness };
+                v3f randomPoint = random_point_in_sphere(&sphere);
+                
+                reflectedDir = randomPoint - intersectPoint;
+            }
+            
+            Ray reflectedRay = Ray(intersectPoint, reflectedDir, false);
+            
+            if (dot(reflectedDir, intersectNormal) > 0)
+            {
+                v4f rayColour = cast_ray(&reflectedRay, objectList, numObjects, maxDepth - 1);
+                resultColour = hadamard(material->colour, rayColour);
+            }
+            else
+                resultColour = COLOUR_BLACK;
+        }
     }
     else
     {
@@ -268,33 +312,40 @@ int main(int argc, char** argv)
     
     Image image = {};
     image.width = 640;
-    image.height = 400;
+    image.height = 360;
     image.pixels = (v4f*)memory_alloc(sizeof(v4f)*image.width*image.height);
     
     fill_image(&image, COLOUR_BLACK);
     
-    RenderObject renderObjects[3];
+    RenderObject renderObjects[4];
     
     {
         RenderObject object = {};
-        object.geometry.pos = v3f(0.5f, -0.1f, -3.0f);
+        object.geometry.pos = v3f(0.5f, -0.1f, -3.5f);
         object.geometry.radius = 1.5f;
         object.material = create_diffuse_material(v4f(0.9f, 0.35f, 0.3f));
         renderObjects[0] = object;
     }
     {
         RenderObject object = {};
-        object.geometry.pos = v3f(-2.5f, 0.0f, -4.5f);
+        object.geometry.pos = v3f(-2.5f, 0.0f, -5.0f);
         object.geometry.radius = 1.5f;
-        object.material = create_diffuse_material(v4f(0.5f, 0.3f, 0.8f));
+        object.material = create_metal_material(v4f(0.5f, 0.3f, 0.8f), 0.3f);
         renderObjects[1] = object;
     }
     {
         RenderObject object = {};
-        object.geometry.pos = v3f(0.0f, -102, -5.0f);
+        object.geometry.pos = v3f(0.0f, -102, -5.5f);
         object.geometry.radius = 100.0f;
         object.material = create_diffuse_material(v4f(0.42f, 0.7f, 0.42f));
         renderObjects[2] = object;
+    }
+    {
+        RenderObject object = {};
+        object.geometry.pos = v3f(3.8f, 2.7f, -6.5f);
+        object.geometry.radius = 1.0f;
+        object.material = create_metal_material(COLOUR_GOLD);
+        renderObjects[3] = object;
     }
     
     // NOTE: we use a Y up coordinate system where +X is to the right and the camera points
@@ -302,17 +353,17 @@ int main(int argc, char** argv)
     v3f cameraPos = v3f();
     
     // distance between camera and image plane
-    f32 focalLength = 1.0f;
+    f32 focalLength = 1.5f;
     
     f32 imagePlaneHeight = 2.0f;
     f32 imagePlaneWidth = imagePlaneHeight*((f32)image.width/image.height);
     
     f32 pixelSize = imagePlaneWidth/image.width;
-    assert(imagePlaneWidth/image.width == imagePlaneHeight/image.height);
+    assert(is_equal(imagePlaneWidth/image.width, imagePlaneHeight/image.height));
     
     // top left of image plane
-    f32 startImagePlaneX = -imagePlaneWidth/2; 
-    f32 startImagePlaneY = imagePlaneHeight/2;
+    f32 startImagePlaneX = -imagePlaneWidth/2.0f;
+    f32 startImagePlaneY = imagePlaneHeight/2.0f;
     
     f32 imagePlaneX = startImagePlaneX;
     f32 imagePlaneY = startImagePlaneY;

@@ -84,6 +84,11 @@ union v3f
     }
 };
 
+v3f operator*(f32 value, v3f v)
+{
+    return v*value;
+}
+
 static inline f32 norm_squared(v3f v)
 {
     return v.x*v.x + v.y*v.y + v.z*v.z;
