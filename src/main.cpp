@@ -62,8 +62,8 @@ struct Material
     {
         NONE,
         DIFFUSE,
-        METAL
-            
+        METAL,
+        DIALECTRIC
     };
     
     Type type;
@@ -71,6 +71,9 @@ struct Material
     
     // used by metal materials to control the fuzziness of reflections
     f32 roughness;
+    
+    // the refractive index for dialectric materials
+    f32 n;
 };
 
 // TODO: Do i want each object to have it's own material, or do I want to have a master
@@ -95,6 +98,15 @@ static Material create_metal_material(v4f colour, f32 roughness = 0.0f)
     result.type = Material::Type::METAL;
     result.colour = colour;
     result.roughness = roughness;
+    return result;
+}
+
+static Material create_dialectric_material(f32 refractiveIndex)
+{
+    Material result = {};
+    result.type = Material::Type::DIALECTRIC;
+    result.colour = COLOUR_WHITE; // TODO: do dialectrics always have no attenuation?
+    result.n = refractiveIndex;
     return result;
 }
 
@@ -129,6 +141,11 @@ static f32 intersection_test(Ray* ray, Sphere* sphere)
     return tResult;
 }
 
+// returns a random value in the range [0, 1)
+static inline f64 random_f64()
+{
+    return rand() / (RAND_MAX + 1.0);
+}
 // returns a random value in the range [0, 1)
 static inline f32 random_f32()
 {
@@ -206,6 +223,29 @@ static inline void fill_image(Image* image, v4f colour)
     }
 }
 
+// reflect a direction vector about a normal
+static inline v3f reflect_direction(v3f dir, v3f normal)
+{
+    f32 projectedDistance = -dot(dir, normal);
+    v3f reflectedDir = dir + 2.0f*normal*projectedDistance;
+    return reflectedDir;
+}
+
+// return a reflected ray about the given normal
+static Ray reflect_ray(Ray* ray, v3f point, v3f normal)
+{
+    return Ray(point, reflect_direction(ray->dir, normal), false);
+}
+
+// calculates reflectance for a material using Schlick's Approximation
+static f64 reflectance(f64 cosine, f64 refractRatio)
+{
+    f64 r0 = (1.0 - refractRatio) / (1.0 + refractRatio);
+    r0 = r0*r0;
+    
+    return r0 + (1.0 - r0)*pow((1.0 - cosine), 5);
+}
+
 // returns colour of pixel after ray cast
 static v4f cast_ray(Ray* ray, RenderObject* objectList, u32 numObjects, u32 maxDepth = 1)
 {
@@ -259,8 +299,7 @@ static v4f cast_ray(Ray* ray, RenderObject* objectList, u32 numObjects, u32 maxD
         else if (material->type == Material::Type::METAL)
         {
             // the reflected ray is calculated assuming the surface is a perfect mirror
-            f32 projectedDistance = -dot(ray->dir, intersectNormal);
-            v3f reflectedDir = ray->dir + 2.0f*intersectNormal*projectedDistance;
+            v3f reflectedDir = reflect_direction(ray->dir, intersectNormal);
             
             if (material->roughness > 0.0f)
             {
@@ -281,6 +320,44 @@ static v4f cast_ray(Ray* ray, RenderObject* objectList, u32 numObjects, u32 maxD
             }
             else
                 resultColour = COLOUR_BLACK;
+        }
+        else if (material->type == Material::Type::DIALECTRIC)
+        {
+            // TODO: make this a formal parameter somewhere
+            f32 worldIndex = 1.0f; // index of refraction of the world, air = 1.0
+            
+            f32 refractRatio = worldIndex/material->n;
+            if (dot(ray->dir, intersectNormal) > 0.0f) // if ray and normal in same direction
+                refractRatio = 1.0f/refractRatio;
+            
+            f32 cosTheta = dot(-ray->dir, intersectNormal);
+            f32 sinTheta = (f32)sqrt(1 - cosTheta*cosTheta);
+            
+            v3f newRayDir = v3f();
+            
+            bool internalReflection  = refractRatio * sinTheta > 1.0f;
+            // using Schlick's Approximation
+            bool shouldReflect = reflectance(cosTheta, refractRatio) > random_f64();
+            
+            if (internalReflection || shouldReflect)
+            {
+                // Refraction impossible, so the ray must reflect
+                newRayDir = reflect_direction(ray->dir, intersectNormal);
+            }
+            else
+            {
+                // Refraction!
+                
+                v3f rayPerpendicular = (refractRatio)*(ray->dir + cosTheta*intersectNormal);
+                v3f rayParallel = (f32)(-sqrt( ABS_VALUE(1 - norm_squared(rayPerpendicular)))) * intersectNormal;
+                
+                newRayDir = rayPerpendicular + rayParallel;
+            }
+            
+            Ray newRay = Ray(intersectPoint, newRayDir, false);
+            
+            v4f rayColour = cast_ray(&newRay, objectList, numObjects, maxDepth - 1);
+            resultColour = hadamard(material->colour, rayColour);
         }
     }
     else
@@ -321,9 +398,10 @@ int main(int argc, char** argv)
     
     {
         RenderObject object = {};
-        object.geometry.pos = v3f(0.5f, -0.1f, -3.5f);
+        object.geometry.pos = v3f(0.5f, -0.3f, -3.5f);
         object.geometry.radius = 1.5f;
-        object.material = create_diffuse_material(v4f(0.9f, 0.35f, 0.3f));
+        object.material = create_dialectric_material(1.5f);
+        //object.material = create_diffuse_material(v4f(0.9f, 0.35f, 0.3f));
         renderObjects[0] = object;
     }
     {
@@ -331,6 +409,7 @@ int main(int argc, char** argv)
         object.geometry.pos = v3f(-2.5f, 0.0f, -5.0f);
         object.geometry.radius = 1.5f;
         object.material = create_metal_material(v4f(0.5f, 0.3f, 0.8f), 0.3f);
+        //object.material = create_dialectric_material(1.5f);
         renderObjects[1] = object;
     }
     {
@@ -345,8 +424,10 @@ int main(int argc, char** argv)
         object.geometry.pos = v3f(3.8f, 2.7f, -6.5f);
         object.geometry.radius = 1.0f;
         object.material = create_metal_material(COLOUR_GOLD);
+        //object.material = create_dialectric_material(1.5f);
         renderObjects[3] = object;
     }
+    
     
     // NOTE: we use a Y up coordinate system where +X is to the right and the camera points
     // into the negative Z direction
