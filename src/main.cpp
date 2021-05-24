@@ -15,33 +15,63 @@
 
 #define FILE_EXT ".bmp"
 
-#define RAY_TRACER_QUALITY 0
+#define ASPECT_RATIO (16.0f/9.0f)
+#define NUM_THREADS 16
+
+#define RAY_TRACER_QUALITY 1
 
 #if RAY_TRACER_QUALITY == 1
-#define SAMPLES_PER_PIXEL 128
-#define MAX_RAY_DEPTH 15
+#define SAMPLES_PER_PIXEL 150
+#define MAX_RAY_DEPTH 25
 #define IMAGE_WIDTH 1280
-#define IMAGE_HEIGHT 720
 #else
-#define SAMPLES_PER_PIXEL 8
+#define SAMPLES_PER_PIXEL 16
 #define MAX_RAY_DEPTH 5
 #define IMAGE_WIDTH 640
-#define IMAGE_HEIGHT 360
 #endif
 
-// TODO: put this in a Colour struct or something? so I can do Colour::White, etc.
-#define COLOUR_WHITE v4f(1.0f, 1.0f, 1.0f)
-#define COLOUR_BLACK v4f(0.0f, 0.0f, 0.0f)
-#define COLOUR_RED  v4f(1.0f, 0.0f, 0.0f)
-#define COLOUR_BLUE v4f(0.0f, 0.0f, 1.0f)
-#define COLOUR_GREEN v4f(0.0f, 1.0f, 0.0f)
-#define COLOUR_CYAN v4f(0.0f, 1.0f, 1.0f)
-#define COLOUR_GOLD v4f(0.94f, 0.76f, 0.11f)
-
-static inline bool is_equal(f32 a, f32 b, f32 error = 0.0001f)
+struct Colour
 {
-    return ABS_VALUE(a - b) <= error;
-}
+    static const v4f BLACK;
+    static const v4f GREY;
+    static const v4f SILVER;
+    static const v4f WHITE;
+    static const v4f RED;
+    static const v4f BROWN;
+    static const v4f ORANGE;
+    static const v4f YELLOW;
+    static const v4f GREEN;
+    static const v4f DARK_GREEN;
+    static const v4f TEAL;
+    static const v4f BLUE;
+    static const v4f INDIGO;
+    static const v4f VIOLET;
+    static const v4f PINK;
+    static const v4f MAROON;
+    static const v4f LAVENDER;
+    static const v4f CYAN;
+    static const v4f GOLD;
+};
+
+const v4f Colour::BLACK = v4f(0, 0, 0);
+const v4f Colour::GREY = v4f(.5f, .5f, .5f);
+const v4f Colour::SILVER = v4f(212.f/255, 212.f/255, 212.f/255);
+const v4f Colour::WHITE = v4f(1, 1, 1);
+const v4f Colour::RED = v4f(209.f/255, 42.f/255, 42.f/255);
+const v4f Colour::BROWN = v4f(130.f/255, 108.f/255, 78.f/255);
+const v4f Colour::ORANGE = v4f(1.0f, 156.f/255, 56.f/255);
+const v4f Colour::YELLOW = v4f(1.0f, 243.f/255, 107.f/255);
+const v4f Colour::GREEN = v4f(50.f/255, 161.f/255, 68.f/255);
+const v4f Colour::DARK_GREEN = v4f(58.f/255, 89.f/255, 65.f/255);
+const v4f Colour::TEAL = v4f(54.f/255, 158.f/255, 132.f/255);
+const v4f Colour::BLUE = v4f(41.f/255, 85.f/255, 196.f/255);
+const v4f Colour::INDIGO = v4f(45.f/255, 40.f/255, 168.f/255);
+const v4f Colour::VIOLET = v4f(164.f/255, 86.f/255, 219.f/255);
+const v4f Colour::PINK = v4f(235.f/255, 131.f/255, 231.f/255);
+const v4f Colour::MAROON = v4f(117.f/255, 39.f/255, 53.f/255);
+const v4f Colour::LAVENDER = v4f(219.f/255, 196.f/255, 245.f/255);
+const v4f Colour::CYAN = v4f(179.f/255, 247.f/255, 1.0f);
+const v4f Colour::GOLD = v4f(1.0f, 210.f/255, 8.f/255);
 
 struct Material
 {
@@ -95,7 +125,7 @@ struct RenderObject
 // TODO: perhaps also keep track of a material list?
 struct World
 {
-    RenderObject list[128];
+    RenderObject list[512];
     u32 count;
     
     RenderObject* add_sphere(v3f pos, f32 radius, Material* material);
@@ -164,79 +194,9 @@ static Material create_dialectric_material(f32 refractiveIndex)
 {
     Material result = {};
     result.type = Material::Type::DIALECTRIC;
-    result.colour = COLOUR_WHITE; // TODO: do dialectrics always have no attenuation?
+    result.colour = Colour::WHITE; // TODO: do dialectrics always have no attenuation?
     result.n = refractiveIndex;
     return result;
-}
-
-// TODO: all these random functions could be put in a utility type file, or math file or something
-// returns a random value in the range [0, 1)
-static inline f64 random_f64()
-{
-    return rand() / (RAND_MAX + 1.0);
-}
-// returns a random value in the range [0, 1)
-static inline f32 random_f32()
-{
-    return (f32)rand() / (RAND_MAX + 1.0f);
-}
-// returns a random value in the range [min, max)
-static inline f32 random_f32(f32 min, f32 max)
-{
-    assert(min < max);
-    return random_f32() * (max - min) + min;
-}
-
-static inline v3f random_v3f()
-{
-    return v3f(random_f32(), random_f32(), random_f32());
-}
-static inline v3f random_v3f(f32 min, f32 max)
-{
-    return v3f(random_f32(min, max), random_f32(min, max), random_f32(min, max));
-}
-
-static v3f random_point_in_unit_sphere()
-{
-    v3f randomPoint = v3f();
-    bool found = false;
-    
-    while (!found)
-    {
-        randomPoint = random_v3f(-1.0f, 1.0f);
-        
-        if (norm(randomPoint) <= 1.0f)
-            found = true;
-    }
-    
-    return randomPoint;
-}
-
-static v3f random_unit_vector()
-{
-    v3f randomPoint = random_point_in_unit_sphere();
-    randomPoint = normalize(randomPoint);
-    return randomPoint;
-}
-
-static v3f random_point_in_sphere(Sphere* sphere)
-{
-    v3f randomPoint = random_point_in_unit_sphere();
-    return randomPoint*sphere->radius + sphere->pos;
-}
-
-static v3f random_point_in_hemisphere(Sphere* sphere, v3f hemisphereNormal)
-{
-    v3f randomPoint = random_point_in_unit_sphere()*sphere->radius;
-    
-    // if the hemisphere is on the wrong side of the normal, we reflect the point about 
-    // the centre
-    if (dot(randomPoint, hemisphereNormal) < 0.0f)
-    {
-        randomPoint = -randomPoint;
-    }
-    
-    return randomPoint + sphere->pos;
 }
 
 static inline void set_pixel(Image* image, u32 x, u32 y, v4f colour)
@@ -268,7 +228,7 @@ static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1)
     v4f resultColour = v4f();
     
     if (maxDepth <= 0)
-        return COLOUR_BLACK;
+        return Colour::BLACK;
     
     const f32 MIN_T = 0.001f;
     const f32 MAX_T = F32_MAX;
@@ -355,7 +315,7 @@ static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1)
                 resultColour = hadamard(material->colour, rayColour);
             }
             else
-                resultColour = COLOUR_BLACK;
+                resultColour = Colour::BLACK;
         }
         else if (material->type == Material::Type::DIALECTRIC)
         {
@@ -400,10 +360,49 @@ static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1)
     {
         // if no collisions we draw a simple gradient
         f32 ratio = 0.5f*(ray->dir.y + 1.0f);
-        resultColour = (1.0f - ratio)*COLOUR_WHITE + ratio*v4f(0.5f, 0.8f, 0.9f);
+        resultColour = (1.0f - ratio)*Colour::WHITE + ratio*v4f(0.7f, 0.8f, 0.9f);
     }
     
     return resultColour;
+}
+
+struct RayTracerBatch
+{
+    u32 startY;
+    u32 endY;
+    
+    Image* outputImage;
+    
+    Camera* camera;
+    World* world;
+};
+
+// TODO: I should rework all my random functions so that they don't rely on 'rand' anymore since those functions
+// are not recommended for multi-threaded programs. Look into the C++ random library instead.
+DWORD run_ray_tracer(void* data)
+{
+    RayTracerBatch* batchData = (RayTracerBatch*)data;
+    
+    for (u32 pixelY = batchData->startY; pixelY < batchData->endY; ++pixelY)
+    {
+        for (u32 pixelX = 0; pixelX < batchData->outputImage->width; ++pixelX)
+        {
+            v4f pixelColour = v4f();
+            
+            for (u32 sampleIndex = 0; sampleIndex < SAMPLES_PER_PIXEL; ++sampleIndex)
+            {
+                f32 u = (pixelX + random_f32())/batchData->outputImage->width;
+                f32 v = (pixelY - random_f32())/batchData->outputImage->height;
+                
+                Ray ray = batchData->camera->get_ray(u, v);
+                pixelColour += cast_ray(&ray, batchData->world, MAX_RAY_DEPTH);
+            }
+            
+            set_pixel(batchData->outputImage, pixelX, pixelY, pixelColour/SAMPLES_PER_PIXEL);
+        }
+    }
+    
+    return 0;
 }
 
 int main(int argc, char** argv)
@@ -423,69 +422,127 @@ int main(int argc, char** argv)
     
     Image image = {};
     image.width = IMAGE_WIDTH;
-    image.height = IMAGE_HEIGHT;
+    image.height = (u32)(image.width/ASPECT_RATIO);
     image.pixels = (v4f*)memory_alloc(sizeof(v4f)*image.width*image.height);
     
-    fill_image(&image, COLOUR_BLACK);
+    fill_image(&image, Colour::BLACK);
     
     printf("Setting up rendering scene...\n");
     
     World world = {};
     
-    Material glassMaterial = create_dialectric_material(1.5f);
-    Material groundMaterial = create_diffuse_material(v4f(0.8f, 0.8f, 0.0f));
-    Material blueDiffuseMaterial = create_diffuse_material(v4f(0.1f, 0.2f, 0.5f));
-    Material goldMetalMaterial = create_metal_material(v4f(0.8f, 0.6f, 0.2f), 0.0f);
+    // adding a bunch of materials
     
-    world.add_plane(v3f(0.0f, 1.0f, 0.0f), -2.0f, &groundMaterial);
-    world.add_sphere(v3f(-1.0f, 0.0f, -1.0f), 0.5f, &glassMaterial);
-    world.add_sphere(v3f(-1.0f, 0.0f, -1.0f), -0.45f, &glassMaterial);
-    world.add_sphere(v3f(0.0f, 0.0f, -1.0f), 0.5f, &blueDiffuseMaterial);
-    world.add_sphere(v3f(1.0f, 0.0f, -1.0f), 0.5f, &goldMetalMaterial);
+    Material materialList[32] = {};
+    u32 numMaterials = 0;
+    materialList[numMaterials++] = create_dialectric_material(1.5f);
+    materialList[numMaterials++] = create_metal_material(Colour::GOLD, 0.2f);
+    materialList[numMaterials++] = create_metal_material(Colour::SILVER, 0.01f);
+    materialList[numMaterials++] = create_diffuse_material(Colour::WHITE);
+    materialList[numMaterials++] = create_diffuse_material(Colour::RED);
+    materialList[numMaterials++] = create_diffuse_material(Colour::ORANGE);
+    materialList[numMaterials++] = create_diffuse_material(Colour::YELLOW);
+    materialList[numMaterials++] = create_diffuse_material(Colour::GREEN);
+    materialList[numMaterials++] = create_diffuse_material(Colour::BLUE);
+    materialList[numMaterials++] = create_diffuse_material(Colour::INDIGO);
+    materialList[numMaterials++] = create_diffuse_material(Colour::VIOLET);
+    materialList[numMaterials++] = create_diffuse_material(Colour::PINK);
+    materialList[numMaterials++] = create_diffuse_material(Colour::MAROON);
+    materialList[numMaterials++] = create_diffuse_material(Colour::LAVENDER);
+    materialList[numMaterials++] = create_diffuse_material(Colour::CYAN);
+    materialList[numMaterials++] = create_diffuse_material(Colour::TEAL);
+    materialList[numMaterials++] = create_diffuse_material(Colour::DARK_GREEN);
+    materialList[numMaterials++] = create_diffuse_material(Colour::BROWN);
     
-    Camera  camera = Camera(v3f(-2.0f, 2.0f, 1.0f), 90, (f32)image.width/image.height);
-    camera.focalLength = 1.0f;
-    camera.set_target(v3f(0.0f, 0.0f, -1.0f));
+    // creating the scene to render!
     
-    f32 pixelSize = camera.image_plane_width()/image.width;
+    world.add_plane(v3f(0.0f, 1.0f, 0.0f), 0.0f, materialList + 3);
     
-    printf("Ray-tracing begins...\n");
-    u32 finishedPercent = 0;
+    const u32 GRID_ROW_COUNT = 16;
+    const f32 GRID_CELL_SIZE = 3.5f;
+    const f32 MIN_RADIUS = 0.5f;
+    const f32 MAX_RADIUS = 0.7f;
     
-    f32 u = 0.0f, v = 0.0f; // offsets on the image plane from the top left point
-    for (u32 pixelY = 0; pixelY < image.height; ++pixelY)
+    for (u32 z = 0; z < GRID_ROW_COUNT; ++z)
     {
-        u = 0.0f;
-        
-        for (u32 pixelX = 0; pixelX < image.width; ++pixelX)
+        for (u32 x = 0; x < GRID_ROW_COUNT; ++x)
         {
-            v4f pixelColour = v4f();
+            f32 minX = -(f32)GRID_ROW_COUNT/2*GRID_CELL_SIZE + x*GRID_CELL_SIZE + GRID_CELL_SIZE*0.5f;
+            f32 minZ = -(f32)GRID_ROW_COUNT/2*GRID_CELL_SIZE + z*GRID_CELL_SIZE + GRID_CELL_SIZE*0.5f;
             
-            for (u32 sampleIndex = 0; sampleIndex < SAMPLES_PER_PIXEL; ++sampleIndex)
+            f32 sphereX = minX + random_f32(-0.5, 0.5)*GRID_CELL_SIZE*.7f;
+            f32 sphereZ = minZ + random_f32(-0.5, 0.5)*GRID_CELL_SIZE*.7f;
+            f32 sphereY = 0.55f;
+            
+            v3f pos = v3f(sphereX, sphereY, sphereZ);
+            f32 radius = random_f32(MIN_RADIUS, MAX_RADIUS);
+            
+            u32 materialIndex = random_u32(4, numMaterials);
+            f32 materialPick = random_f32();
+            if (materialPick > 0.9f)
             {
-                f32 uOffset = random_f32()*pixelSize;
-                f32 vOffset = random_f32()*pixelSize;
-                
-                Ray ray = camera.get_ray(u + uOffset, v + vOffset);
-                pixelColour += cast_ray(&ray, &world, MAX_RAY_DEPTH);
+                materialIndex = 0;
             }
             
-            set_pixel(&image, pixelX, pixelY, pixelColour/SAMPLES_PER_PIXEL);
-            
-            u += pixelSize;
-        }
-        
-        v += pixelSize;
-        
-        // printing progress to console
-        static const u32 TOTAL_ROWS = image.height;
-        u32 currentPercent = (u32)((f32)pixelY/TOTAL_ROWS * 100.0f);
-        if (currentPercent > finishedPercent)
-        {
-            finishedPercent = currentPercent;
-            printf("%d%%\n", currentPercent);
+            world.add_sphere(pos, radius, materialList + materialIndex);
         }
     }
+    
+    world.add_sphere(v3f(1.0f, 4.0f, 0.5f), 4.0f, materialList);
+    world.add_sphere(v3f(-11.0f, 4.0f, -5.0f), 4.0f, materialList + 1);
+    world.add_sphere(v3f(5.5f, 4.0f, 15.0f), 4.0f, materialList + 2);
+    
+    // setting up camera properties
+    
+    Camera  camera = Camera(v3f(-3.5f, 2.5f, 35), 35, (f32)image.width/image.height);
+    camera.set_target(v3f(0, .5f, 0));
+    camera.up = normalize(v3f(.2f, 10, .8f));
+    camera.set_lens(0.3f, 35.0f);
+    
+    // start the ray tracing!
+    
+    printf("Ray-tracing begins...\n");
+    
+    u32 rowsPerThread = image.height/NUM_THREADS;
+    HANDLE threadHandles[NUM_THREADS];
+    RayTracerBatch* threadData[NUM_THREADS];
+    
+    for (u32 threadIndex = 0; threadIndex < NUM_THREADS; ++threadIndex)
+    {
+        threadData[threadIndex] = (RayTracerBatch*)memory_alloc(sizeof(RayTracerBatch));
+        threadData[threadIndex]->outputImage = &image;
+        threadData[threadIndex]->camera = &camera;
+        threadData[threadIndex]->world = &world;
+        threadData[threadIndex]->startY = threadIndex*rowsPerThread;
+        threadData[threadIndex]->endY = threadData[threadIndex]->startY + rowsPerThread;
+        
+        if (threadIndex >= NUM_THREADS - 1)
+            threadData[threadIndex]->endY = image.height;
+        
+        threadHandles[threadIndex] = CreateThread(0, 0, run_ray_tracer, threadData[threadIndex], 0, 0);
+        assert(threadHandles[threadIndex]);
+    }
+    
+    WaitForMultipleObjects(NUM_THREADS, threadHandles, TRUE, INFINITE);
+    
+    for (u32 i = 0; i < NUM_THREADS; ++i)
+    {
+        CloseHandle(threadHandles[i]);
+        memory_free(threadData[i]);
+    }
+    
+    // TODO: see if I can incorporate this into the multi-threaded version
+#if 0
+    u32 finishedPercent = 0;
+    // printing progress to console
+    static const u32 TOTAL_ROWS = image.height;
+    u32 currentPercent = (u32)((f32)pixelY/TOTAL_ROWS * 100.0f);
+    if (currentPercent > finishedPercent)
+    {
+        finishedPercent = currentPercent;
+        printf("%d%%\n", currentPercent);
+    }
+#endif
     
     printf("Ray-tracing finished!\n");
     printf("Writing output to file: %s\n", fileName);

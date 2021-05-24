@@ -29,7 +29,16 @@ typedef int16_t s16;
 typedef int32_t s32;
 typedef int64_t s64;
 
-// TODO: these should maybe be in a "math" header instead
+union v4f;
+
+struct Image
+{
+    v4f* pixels;
+    u32 width;
+    u32 height;
+};
+
+// TODO: these should maybe be in a "math" header instead, or maybe put the vector stuff in a specific "vectors" file?
 #include <math.h>
 
 static inline f32 degrees_to_radians(f32 degrees)
@@ -150,7 +159,6 @@ static inline v3f cross(v3f v1, v3f v2)
                v1.x*v2.y - v1.y*v2.x);
 }
 
-// TODO: this could/should be in a utility file
 static inline bool near_zero(v3f v)
 {
     const f32 error = 1e-8f;
@@ -240,12 +248,5 @@ static inline v4f hadamard(v4f v1, v4f v2)
     result.w = v1.w * v2.w;
     return result;
 }
-
-struct Image
-{
-    v4f* pixels;
-    u32 width;
-    u32 height;
-};
 
 #endif //TYPES_H
