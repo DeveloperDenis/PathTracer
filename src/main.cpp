@@ -10,14 +10,24 @@
 #include "memory.h"
 #include "strings.h"
 #include "file_io.h"
+#include "geometry.cpp"
+#include "camera.cpp"
 
 #define FILE_EXT ".bmp"
 
-// the higher this value is, the less aliasing in the final image
-// but it will drastically increase the render time
-#define SAMPLES_PER_PIXEL 32
+#define RAY_TRACER_QUALITY 0
 
-#define MAX_RAY_DEPTH 10
+#if RAY_TRACER_QUALITY == 1
+#define SAMPLES_PER_PIXEL 128
+#define MAX_RAY_DEPTH 15
+#define IMAGE_WIDTH 1280
+#define IMAGE_HEIGHT 720
+#else
+#define SAMPLES_PER_PIXEL 8
+#define MAX_RAY_DEPTH 5
+#define IMAGE_WIDTH 640
+#define IMAGE_HEIGHT 360
+#endif
 
 // TODO: put this in a Colour struct or something? so I can do Colour::White, etc.
 #define COLOUR_WHITE v4f(1.0f, 1.0f, 1.0f)
@@ -32,27 +42,6 @@ static inline bool is_equal(f32 a, f32 b, f32 error = 0.0001f)
 {
     return ABS_VALUE(a - b) <= error;
 }
-
-struct Ray
-{
-    Ray(v3f rayOrigin, v3f rayDir, bool normalized = true) 
-        : origin(rayOrigin), dir(rayDir)
-    {
-        if (!normalized)
-            rayDir = normalize(rayDir);
-    }
-    
-    v3f at(f32 t) { return origin + dir*t; }
-    
-    v3f origin;
-    v3f dir;
-};
-
-struct Sphere
-{
-    v3f pos;
-    f32 radius;
-};
 
 struct Material
 {
@@ -80,9 +69,79 @@ struct Material
 // material list that each object has an index into?
 struct RenderObject
 {
+    enum Type
+    {
+        SPHERE,
+        PLANE
+    };
+    
     Material material;
-    Sphere geometry;
+    Type type;
+    
+    union
+    {
+        Sphere sphere;
+        Plane plane;
+    };
+    
+    RenderObject()
+    {
+        material = {};
+        type = SPHERE;
+        sphere = {};
+    }
 };
+
+// TODO: perhaps also keep track of a material list?
+struct World
+{
+    RenderObject list[128];
+    u32 count;
+    
+    RenderObject* add_sphere(v3f pos, f32 radius, Material* material);
+    RenderObject* add_plane(v3f normal, f32 d, Material* material);
+};
+
+RenderObject* World::add_sphere(v3f pos, f32 radius, Material* material)
+{
+    assert(material);
+    assert(count < ARRAY_LENGTH(list));
+    
+    if (!material || count >= ARRAY_LENGTH(list))
+        return 0;
+    
+    RenderObject* object = list + count;
+    *object = {};
+    
+    object->type = RenderObject::Type::SPHERE;
+    object->sphere.pos = pos;
+    object->sphere.radius = radius;
+    object->material = *material;
+    
+    ++count;
+    
+    return object;
+}
+
+RenderObject* World::add_plane(v3f normal, f32 d, Material* material)
+{
+    assert(material);
+    assert(count < ARRAY_LENGTH(list));
+    
+    if (!material || count >= ARRAY_LENGTH(list))
+        return 0;
+    
+    RenderObject* object = list + count;
+    *object = {};
+    object->type = RenderObject::Type::PLANE;
+    object->plane.normal = normal;
+    object->plane.offset = d;
+    object->material = *material;
+    
+    ++count;
+    
+    return object;
+}
 
 static Material create_diffuse_material(v4f colour)
 {
@@ -110,37 +169,7 @@ static Material create_dialectric_material(f32 refractiveIndex)
     return result;
 }
 
-static f32 intersection_test(Ray* ray, Sphere* sphere)
-{
-    f32 tResult = F32_MIN;
-    
-    // TODO: could reduce number of calculations if I precalculate some values and simplify
-    // the quadratic formula by doing some substitution and working it out
-    f32 a = 1; //dot(ray.dir, ray.dir); not needed because ray.dir is normalized
-    f32 b = 2*dot(ray->dir, ray->origin - sphere->pos);
-    f32 c = dot(ray->origin - sphere->pos, ray->origin - sphere->pos) - sphere->radius*sphere->radius;
-    
-    f32 discriminant = b*b - 4*a*c;
-    if (discriminant > 0)
-    {
-        // two sphere collision points
-        
-        f32 rootValue = (f32)sqrt(discriminant);
-        
-        // NOTE: We only really need the closest intersection point, and if it is negative,
-        // then we don't want to draw the sphere anyway because it's either behind the camera
-        // or envelopping the camera
-        tResult = (-b - rootValue) / (2*a);
-    }
-    else if (discriminant == 0)
-    {
-        // one sphere collision point
-        tResult = -b / (2*a);
-    }
-    
-    return tResult;
-}
-
+// TODO: all these random functions could be put in a utility type file, or math file or something
 // returns a random value in the range [0, 1)
 static inline f64 random_f64()
 {
@@ -223,19 +252,6 @@ static inline void fill_image(Image* image, v4f colour)
     }
 }
 
-// reflect a direction vector about a normal
-static inline v3f reflect_direction(v3f dir, v3f normal)
-{
-    f32 projectedDistance = -dot(dir, normal);
-    v3f reflectedDir = dir + 2.0f*normal*projectedDistance;
-    return reflectedDir;
-}
-
-// return a reflected ray about the given normal
-static Ray reflect_ray(Ray* ray, v3f point, v3f normal)
-{
-    return Ray(point, reflect_direction(ray->dir, normal), false);
-}
 
 // calculates reflectance for a material using Schlick's Approximation
 static f64 reflectance(f64 cosine, f64 refractRatio)
@@ -247,7 +263,7 @@ static f64 reflectance(f64 cosine, f64 refractRatio)
 }
 
 // returns colour of pixel after ray cast
-static v4f cast_ray(Ray* ray, RenderObject* objectList, u32 numObjects, u32 maxDepth = 1)
+static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1)
 {
     v4f resultColour = v4f();
     
@@ -263,18 +279,38 @@ static v4f cast_ray(Ray* ray, RenderObject* objectList, u32 numObjects, u32 maxD
     Material* material = 0;
     
     // checking for intersection
-    for (u32 i = 0; i < numObjects; ++i)
+    for (u32 i = 0; i < world->count; ++i)
     {
-        RenderObject* object = objectList + i;
-        Sphere* sphere = &object->geometry;
-        f32 t = intersection_test(ray, sphere);
+        RenderObject* object = world->list + i;
+        
+        f32 t = F32_MIN;
+        
+        switch(object->type)
+        {
+            case RenderObject::Type::SPHERE:
+            {
+                Sphere* sphere = &object->sphere;
+                t = intersection_test(ray, sphere);
+            } break;
+            
+            case RenderObject::Type::PLANE:
+            {
+                Plane* plane = &object->plane;
+                t = intersection_test(ray, plane);
+            } break;
+        }
         
         if (t > MIN_T && t < tClosest)
         {
             tClosest = t;
             
             intersectPoint = ray->at(t);
-            intersectNormal = normalize(intersectPoint - sphere->pos);
+            
+            if (object->type == RenderObject::Type::SPHERE)
+                intersectNormal = normalize(intersectPoint - object->sphere.pos);
+            else if (object->type == RenderObject::Type::PLANE)
+                intersectNormal = object->plane.normal;
+            
             material = &object->material;
         }
     }
@@ -291,7 +327,7 @@ static v4f cast_ray(Ray* ray, RenderObject* objectList, u32 numObjects, u32 maxD
                 scatterDirection = intersectNormal;
             
             Ray reflectRay = Ray(intersectPoint, scatterDirection, false);
-            v4f rayColour = cast_ray(&reflectRay, objectList, numObjects, maxDepth - 1);
+            v4f rayColour = cast_ray(&reflectRay, world, maxDepth - 1);
             
             // attenuate using the colour of the material
             resultColour = hadamard(material->colour, rayColour);
@@ -305,7 +341,7 @@ static v4f cast_ray(Ray* ray, RenderObject* objectList, u32 numObjects, u32 maxD
             {
                 // we find a random point near the reflection point to make the reflection
                 // less clear
-                Sphere sphere = { intersectPoint + reflectedDir, material->roughness };
+                Sphere sphere = Sphere(intersectPoint + reflectedDir, material->roughness);
                 v3f randomPoint = random_point_in_sphere(&sphere);
                 
                 reflectedDir = randomPoint - intersectPoint;
@@ -315,7 +351,7 @@ static v4f cast_ray(Ray* ray, RenderObject* objectList, u32 numObjects, u32 maxD
             
             if (dot(reflectedDir, intersectNormal) > 0)
             {
-                v4f rayColour = cast_ray(&reflectedRay, objectList, numObjects, maxDepth - 1);
+                v4f rayColour = cast_ray(&reflectedRay, world, maxDepth - 1);
                 resultColour = hadamard(material->colour, rayColour);
             }
             else
@@ -356,7 +392,7 @@ static v4f cast_ray(Ray* ray, RenderObject* objectList, u32 numObjects, u32 maxD
             
             Ray newRay = Ray(intersectPoint, newRayDir, false);
             
-            v4f rayColour = cast_ray(&newRay, objectList, numObjects, maxDepth - 1);
+            v4f rayColour = cast_ray(&newRay, world, maxDepth - 1);
             resultColour = hadamard(material->colour, rayColour);
         }
     }
@@ -386,98 +422,62 @@ int main(int argc, char** argv)
         duplicate_string(argv[1]);
     
     Image image = {};
-    image.width = 640;
-    image.height = 360;
+    image.width = IMAGE_WIDTH;
+    image.height = IMAGE_HEIGHT;
     image.pixels = (v4f*)memory_alloc(sizeof(v4f)*image.width*image.height);
     
     fill_image(&image, COLOUR_BLACK);
     
     printf("Setting up rendering scene...\n");
     
-    RenderObject renderObjects[4];
+    World world = {};
     
-    {
-        RenderObject object = {};
-        object.geometry.pos = v3f(0.5f, -0.3f, -3.5f);
-        object.geometry.radius = 1.5f;
-        object.material = create_dialectric_material(1.5f);
-        //object.material = create_diffuse_material(v4f(0.9f, 0.35f, 0.3f));
-        renderObjects[0] = object;
-    }
-    {
-        RenderObject object = {};
-        object.geometry.pos = v3f(-2.5f, 0.0f, -5.0f);
-        object.geometry.radius = 1.5f;
-        object.material = create_metal_material(v4f(0.5f, 0.3f, 0.8f), 0.3f);
-        //object.material = create_dialectric_material(1.5f);
-        renderObjects[1] = object;
-    }
-    {
-        RenderObject object = {};
-        object.geometry.pos = v3f(0.0f, -102, -5.5f);
-        object.geometry.radius = 100.0f;
-        object.material = create_diffuse_material(v4f(0.42f, 0.7f, 0.42f));
-        renderObjects[2] = object;
-    }
-    {
-        RenderObject object = {};
-        object.geometry.pos = v3f(3.8f, 2.7f, -6.5f);
-        object.geometry.radius = 1.0f;
-        object.material = create_metal_material(COLOUR_GOLD);
-        //object.material = create_dialectric_material(1.5f);
-        renderObjects[3] = object;
-    }
+    Material glassMaterial = create_dialectric_material(1.5f);
+    Material groundMaterial = create_diffuse_material(v4f(0.8f, 0.8f, 0.0f));
+    Material blueDiffuseMaterial = create_diffuse_material(v4f(0.1f, 0.2f, 0.5f));
+    Material goldMetalMaterial = create_metal_material(v4f(0.8f, 0.6f, 0.2f), 0.0f);
     
+    world.add_plane(v3f(0.0f, 1.0f, 0.0f), -2.0f, &groundMaterial);
+    world.add_sphere(v3f(-1.0f, 0.0f, -1.0f), 0.5f, &glassMaterial);
+    world.add_sphere(v3f(-1.0f, 0.0f, -1.0f), -0.45f, &glassMaterial);
+    world.add_sphere(v3f(0.0f, 0.0f, -1.0f), 0.5f, &blueDiffuseMaterial);
+    world.add_sphere(v3f(1.0f, 0.0f, -1.0f), 0.5f, &goldMetalMaterial);
     
-    // NOTE: we use a Y up coordinate system where +X is to the right and the camera points
-    // into the negative Z direction
-    v3f cameraPos = v3f();
+    Camera  camera = Camera(v3f(-2.0f, 2.0f, 1.0f), 90, (f32)image.width/image.height);
+    camera.focalLength = 1.0f;
+    camera.set_target(v3f(0.0f, 0.0f, -1.0f));
     
-    // distance between camera and image plane
-    f32 focalLength = 1.5f;
-    
-    f32 imagePlaneHeight = 2.0f;
-    f32 imagePlaneWidth = imagePlaneHeight*((f32)image.width/image.height);
-    
-    f32 pixelSize = imagePlaneWidth/image.width;
-    assert(is_equal(imagePlaneWidth/image.width, imagePlaneHeight/image.height));
-    
-    // top left of image plane
-    f32 startImagePlaneX = -imagePlaneWidth/2.0f;
-    f32 startImagePlaneY = imagePlaneHeight/2.0f;
-    
-    f32 imagePlaneX = startImagePlaneX;
-    f32 imagePlaneY = startImagePlaneY;
+    f32 pixelSize = camera.image_plane_width()/image.width;
     
     printf("Ray-tracing begins...\n");
     u32 finishedPercent = 0;
     
+    f32 u = 0.0f, v = 0.0f; // offsets on the image plane from the top left point
     for (u32 pixelY = 0; pixelY < image.height; ++pixelY)
     {
+        u = 0.0f;
+        
         for (u32 pixelX = 0; pixelX < image.width; ++pixelX)
         {
             v4f pixelColour = v4f();
             
             for (u32 sampleIndex = 0; sampleIndex < SAMPLES_PER_PIXEL; ++sampleIndex)
             {
-                f32 u = random_f32()*pixelSize;
-                f32 v = random_f32()*pixelSize;
+                f32 uOffset = random_f32()*pixelSize;
+                f32 vOffset = random_f32()*pixelSize;
                 
-                v3f imagePlanePoint = v3f(imagePlaneX + u, imagePlaneY - v, -focalLength);
-                
-                Ray ray = Ray(cameraPos, normalize(imagePlanePoint - cameraPos));
-                
-                pixelColour += cast_ray(&ray, renderObjects, ARRAY_LENGTH(renderObjects), MAX_RAY_DEPTH);
+                Ray ray = camera.get_ray(u + uOffset, v + vOffset);
+                pixelColour += cast_ray(&ray, &world, MAX_RAY_DEPTH);
             }
             
             set_pixel(&image, pixelX, pixelY, pixelColour/SAMPLES_PER_PIXEL);
             
-            imagePlaneX += pixelSize;
+            u += pixelSize;
         }
         
-        imagePlaneX = startImagePlaneX;
-        imagePlaneY -= pixelSize;
+        v += pixelSize;
         
+        // printing progress to console
         static const u32 TOTAL_ROWS = image.height;
         u32 currentPercent = (u32)((f32)pixelY/TOTAL_ROWS * 100.0f);
         if (currentPercent > finishedPercent)

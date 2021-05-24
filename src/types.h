@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define MATH_PI 3.141592653589793f
+
 // copied from float.h file
 #define F32_MAX 3.402823466e+38F
 #define F32_MIN -3.402823466e+38F
@@ -29,6 +31,30 @@ typedef int64_t s64;
 
 // TODO: these should maybe be in a "math" header instead
 #include <math.h>
+
+static inline f32 degrees_to_radians(f32 degrees)
+{
+    return degrees * (MATH_PI/180.0f);
+}
+
+union v2f
+{
+    v2f() : x(0), y(0) {}
+    v2f(f32 xVal, f32 yVal) : x(xVal), y(yVal) {}
+    
+    struct
+    {
+        f32 x;
+        f32 y;
+    };
+    struct
+    {
+        f32 w;
+        f32 h;
+    };
+    f32 e[2];
+};
+
 union v3f
 {
     v3f() : x(0), y(0), z(0) {}
@@ -117,6 +143,14 @@ static inline f32 dot(v3f v1, v3f v2)
     return v1.x*v2.x + v1.y*v2.y + v1.z*v2.z;
 }
 
+static inline v3f cross(v3f v1, v3f v2)
+{
+    return v3f(v1.y*v2.z - v1.z*v2.y, 
+               v1.z*v2.x - v1.x*v2.z, 
+               v1.x*v2.y - v1.y*v2.x);
+}
+
+// TODO: this could/should be in a utility file
 static inline bool near_zero(v3f v)
 {
     const f32 error = 1e-8f;

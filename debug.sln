@@ -1,21 +1,20 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.31005.135
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.1525
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{911E67C6-3D85-4FCE-B560-20A9C3E3FF48}") = "main", "build\main.exe", "{EF87213E-B82D-4B93-B6BE-2B64ED5C3F0C}"
+Project("{911E67C6-3D85-4FCE-B560-20A9C3E3FF48}") = "main", "build\main.exe", "{A24B90E9-E49B-4A22-A025-8D31F2A09EE9}"
 	ProjectSection(DebuggerProjectSystem) = preProject
 		PortSupplier = 00000000-0000-0000-0000-000000000000
-		Executable = C:\Users\denis\dev\SimpleRaytracer\build\main.exe
-		RemoteMachine = DESKTOP-HUCGKD4
-		StartingDirectory = C:\Users\denis\dev\SimpleRaytracer\output\
+		Executable = D:\dev\SimpleRaytracer\build\main.exe
+		RemoteMachine = DESKTOP-S8P3QCP
+		StartingDirectory = D:\dev\SimpleRaytracer\output
 		Arguments = test_output
 		Environment = Default
 		LaunchingEngine = 00000000-0000-0000-0000-000000000000
 		UseLegacyDebugEngines = No
 		LaunchSQLEngine = No
 		AttachLaunchAction = No
-		IORedirection = Auto
 	EndProjectSection
 EndProject
 Global
@@ -23,12 +22,12 @@ Global
 		Release|x64 = Release|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{EF87213E-B82D-4B93-B6BE-2B64ED5C3F0C}.Release|x64.ActiveCfg = Release|x64
+		{A24B90E9-E49B-4A22-A025-8D31F2A09EE9}.Release|x64.ActiveCfg = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {91CCA627-0322-485F-A6A3-D21B5B0FB2A7}
+		SolutionGuid = {FE36F827-BAE3-4A64-ABEE-98D822778AC9}
 	EndGlobalSection
 EndGlobal
