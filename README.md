@@ -1,4 +1,4 @@
-A ray-tracer built entirely from scratch, without any external libraries, in C++ based on the "Ray Tracing in One Weekend" trilogy of books by Peter Shirley.
+A ray-tracer built entirely from scratch, without any external libraries, in C++ based on the ["Ray Tracing in One Weekend"](https://raytracing.github.io/) trilogy of books by Peter Shirley.
 
 # Results from the first book "Ray Tracing in One Weekend"
 
