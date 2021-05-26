@@ -16,14 +16,17 @@
 #define FILE_EXT ".bmp"
 
 #define ASPECT_RATIO (16.0f/9.0f)
+
+// it seems like the sweet spot of block size might be between 16 & 32
+#define BLOCK_SIZE 32
 #define NUM_THREADS 16
 
 #define RAY_TRACER_QUALITY 1
 
 #if RAY_TRACER_QUALITY == 1
-#define SAMPLES_PER_PIXEL 150
-#define MAX_RAY_DEPTH 25
-#define IMAGE_WIDTH 1280
+#define SAMPLES_PER_PIXEL 200
+#define MAX_RAY_DEPTH 50
+#define IMAGE_WIDTH 1920
 #else
 #define SAMPLES_PER_PIXEL 16
 #define MAX_RAY_DEPTH 5
@@ -368,8 +371,8 @@ static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1)
 
 struct RayTracerBatch
 {
-    u32 startY;
-    u32 endY;
+    u32 startX, startY;
+    u32 endX, endY;
     
     Image* outputImage;
     
@@ -385,7 +388,7 @@ DWORD run_ray_tracer(void* data)
     
     for (u32 pixelY = batchData->startY; pixelY < batchData->endY; ++pixelY)
     {
-        for (u32 pixelX = 0; pixelX < batchData->outputImage->width; ++pixelX)
+        for (u32 pixelX = batchData->startX; pixelX < batchData->endX; ++pixelX)
         {
             v4f pixelColour = v4f();
             
@@ -403,6 +406,33 @@ DWORD run_ray_tracer(void* data)
     }
     
     return 0;
+}
+
+bool get_pixel_block(u32 blockIndex, u32 totalWidth, u32 totalHeight, u32* startX, u32* startY, u32* endX, u32* endY)
+{
+    u32 blocksPerCol = totalWidth/BLOCK_SIZE;
+    u32 blocksPerRow = totalHeight/BLOCK_SIZE;
+    
+    if (blockIndex >= blocksPerCol * blocksPerRow)
+        return false;
+    
+    u32 startBlockX = blockIndex % blocksPerCol;
+    u32 startBlockY = blockIndex/blocksPerCol;
+    
+    *startX = startBlockX * BLOCK_SIZE;
+    *startY = startBlockY * BLOCK_SIZE;
+    
+    if (startBlockX == blocksPerCol - 1)
+        *endX = totalWidth;
+    else
+        *endX = *startX + BLOCK_SIZE;
+    
+    if (startBlockY == blocksPerRow - 1)
+        *endY = totalHeight;
+    else
+        *endY = *startY + BLOCK_SIZE;
+    
+    return true;
 }
 
 int main(int argc, char** argv)
@@ -503,48 +533,93 @@ int main(int argc, char** argv)
     
     printf("Ray-tracing begins...\n");
     
-    u32 rowsPerThread = image.height/NUM_THREADS;
+    LARGE_INTEGER countsPerSecond = {};
+    LARGE_INTEGER startTime = {};
+    LARGE_INTEGER endTime = {};
+    
+    QueryPerformanceFrequency(&countsPerSecond);
+    QueryPerformanceCounter(&startTime);
+    
+    // TODO: I think there is a problem with how I handle multi-threading? I can't tell most of the time because
+    // of the regular amount of noise, but with a block size of 8 there appears to be weird artifacting
+    
+    // set up all the threads to run the initial batch of pixels
+    
+    u32 nextBlock = 0;
+    
     HANDLE threadHandles[NUM_THREADS];
     RayTracerBatch* threadData[NUM_THREADS];
     
-    for (u32 threadIndex = 0; threadIndex < NUM_THREADS; ++threadIndex)
+    for (nextBlock = 0; nextBlock < NUM_THREADS; ++nextBlock)
     {
+        u32 threadIndex = nextBlock;
+        
         threadData[threadIndex] = (RayTracerBatch*)memory_alloc(sizeof(RayTracerBatch));
         threadData[threadIndex]->outputImage = &image;
         threadData[threadIndex]->camera = &camera;
         threadData[threadIndex]->world = &world;
-        threadData[threadIndex]->startY = threadIndex*rowsPerThread;
-        threadData[threadIndex]->endY = threadData[threadIndex]->startY + rowsPerThread;
         
-        if (threadIndex >= NUM_THREADS - 1)
-            threadData[threadIndex]->endY = image.height;
+        u32 x1, x2, y1, y2;
+        get_pixel_block(nextBlock, image.width, image.height, &x1, &y1, &x2, &y2);
+        
+        threadData[threadIndex]->startX = x1;
+        threadData[threadIndex]->startY = y1;
+        threadData[threadIndex]->endX = x2;
+        threadData[threadIndex]->endY = y2;
         
         threadHandles[threadIndex] = CreateThread(0, 0, run_ray_tracer, threadData[threadIndex], 0, 0);
         assert(threadHandles[threadIndex]);
     }
     
-    WaitForMultipleObjects(NUM_THREADS, threadHandles, TRUE, INFINITE);
+    // when threads finish their work give them more, as long as there is more to give
     
-    for (u32 i = 0; i < NUM_THREADS; ++i)
+    u32 runningThreads = NUM_THREADS;
+    u32 finishedBlocks = 0;
+    u32 totalBlocks = (image.width/BLOCK_SIZE) * (image.height/BLOCK_SIZE);
+    
+    while (runningThreads > 0)
     {
-        CloseHandle(threadHandles[i]);
-        memory_free(threadData[i]);
+        DWORD result = WaitForMultipleObjects(runningThreads, threadHandles, FALSE, INFINITE);
+        if (result == WAIT_FAILED)
+            break;
+        
+        if (result >= WAIT_OBJECT_0 && result <= WAIT_OBJECT_0 + NUM_THREADS)
+        {
+            // TODO: it would be better to do a thread-pooling thing here, so either look into the win32 version,
+            // or see if the CRT or C++ library make it easier
+            u32 threadIndex = result - WAIT_OBJECT_0;
+            CloseHandle(threadHandles[threadIndex]);
+            
+            u32 x1, y1, x2, y2;
+            if (get_pixel_block(nextBlock, image.width, image.height, &x1, &y1, &x2, &y2))
+            {
+                threadData[threadIndex]->startX = x1;
+                threadData[threadIndex]->startY = y1;
+                threadData[threadIndex]->endX = x2;
+                threadData[threadIndex]->endY = y2;
+                
+                threadHandles[threadIndex] = CreateThread(0, 0, run_ray_tracer, threadData[threadIndex], 0, 0);
+                
+                ++nextBlock;
+            }
+            else
+            {
+                memory_free(threadData[threadIndex]);
+                threadData[threadIndex] = threadData[runningThreads - 1];
+                threadHandles[threadIndex] = threadHandles[runningThreads - 1];
+                --runningThreads;
+            }
+            
+            ++finishedBlocks;
+            printf("%f%%\n", ((f32)finishedBlocks/totalBlocks)*100.0f);
+        }
     }
     
-    // TODO: see if I can incorporate this into the multi-threaded version
-#if 0
-    u32 finishedPercent = 0;
-    // printing progress to console
-    static const u32 TOTAL_ROWS = image.height;
-    u32 currentPercent = (u32)((f32)pixelY/TOTAL_ROWS * 100.0f);
-    if (currentPercent > finishedPercent)
-    {
-        finishedPercent = currentPercent;
-        printf("%d%%\n", currentPercent);
-    }
-#endif
+    QueryPerformanceCounter(&endTime);
+    f64 timeElapsed = (endTime.QuadPart - startTime.QuadPart) / (f64)countsPerSecond.QuadPart;
     
     printf("Ray-tracing finished!\n");
+    printf("Time elapsed: %f seconds\n", timeElapsed);
     printf("Writing output to file: %s\n", fileName);
     
     write_image_to_bmp(fileName, &image);
