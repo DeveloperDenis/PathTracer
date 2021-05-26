@@ -12,4 +12,4 @@ The features I have implemented for part one of this project are (in no particul
 * Metal material with both a colour and roughness property. The roughness controls how clear the reflections are in the object.
 * Dialectric material (glass-like material) that refract light in addition to reflecting.
 * A camera that can be set to an arbitray position, facing direction, roll, and field of view. As well as a simple lens implementation that mimics a depth-of-field effect with customizable aperture and focus distance parameters.
-* A basic multi-threading implementation that batches scan lines together and runs the ray-tracing algorithm on the batches in parallel.
+* A fairly simple multi-threading implementation that divides the image into blocks of pixels and assigns each thread a block to work on as the threads become available.
