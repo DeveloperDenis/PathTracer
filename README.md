@@ -1,10 +1,10 @@
-A ray-tracer built entirely from scratch, without any external libraries, in C++ based on the ["Ray Tracing in One Weekend"](https://raytracing.github.io/) trilogy of books by Peter Shirley.
+A path-tracer built entirely from scratch, without any external libraries, in C++ based on the ["Ray Tracing in One Weekend"](https://raytracing.github.io/) trilogy of books by Peter Shirley.
 
 # Results from the first book "Ray Tracing in One Weekend"
 
 ![Rendered Result of book one](output/11_book_1_final.bmp)
 
-After working through the first of Peter Shirley's ray-tracing books, I've managed to create a decent looking little scene, similar to the cover of the book. I tried to incorporate every feature of the ray-tracer into this image as an easy way to see the current state of the application.
+After working through the first of Peter Shirley's ray-tracing books, I've managed to create a decent looking little scene, similar to the cover of the book. I tried to incorporate every feature of the path-tracer into this image as an easy way to see the current state of the application.
 
 The features I have implemented for part one of this project are (in no particular order):
 * Sphere-ray intersection and plane-ray intersection.
