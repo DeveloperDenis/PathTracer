@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <assert.h>
 
 #define WIN32_LEAN_AND_MEAN
@@ -12,6 +11,8 @@
 #include "file_io.h"
 #include "geometry.cpp"
 #include "camera.cpp"
+#include "render_world.cpp"
+#include "scene_init.h"
 
 #define FILE_EXT ".bmp"
 
@@ -32,175 +33,6 @@
 #define MAX_RAY_DEPTH 5
 #define IMAGE_WIDTH 640
 #endif
-
-struct Colour
-{
-    static const v4f BLACK;
-    static const v4f GREY;
-    static const v4f SILVER;
-    static const v4f WHITE;
-    static const v4f RED;
-    static const v4f BROWN;
-    static const v4f ORANGE;
-    static const v4f YELLOW;
-    static const v4f GREEN;
-    static const v4f DARK_GREEN;
-    static const v4f TEAL;
-    static const v4f BLUE;
-    static const v4f INDIGO;
-    static const v4f VIOLET;
-    static const v4f PINK;
-    static const v4f MAROON;
-    static const v4f LAVENDER;
-    static const v4f CYAN;
-    static const v4f GOLD;
-};
-
-const v4f Colour::BLACK = v4f(0, 0, 0);
-const v4f Colour::GREY = v4f(.5f, .5f, .5f);
-const v4f Colour::SILVER = v4f(212.f/255, 212.f/255, 212.f/255);
-const v4f Colour::WHITE = v4f(1, 1, 1);
-const v4f Colour::RED = v4f(209.f/255, 42.f/255, 42.f/255);
-const v4f Colour::BROWN = v4f(130.f/255, 108.f/255, 78.f/255);
-const v4f Colour::ORANGE = v4f(1.0f, 156.f/255, 56.f/255);
-const v4f Colour::YELLOW = v4f(1.0f, 243.f/255, 107.f/255);
-const v4f Colour::GREEN = v4f(50.f/255, 161.f/255, 68.f/255);
-const v4f Colour::DARK_GREEN = v4f(58.f/255, 89.f/255, 65.f/255);
-const v4f Colour::TEAL = v4f(54.f/255, 158.f/255, 132.f/255);
-const v4f Colour::BLUE = v4f(41.f/255, 85.f/255, 196.f/255);
-const v4f Colour::INDIGO = v4f(45.f/255, 40.f/255, 168.f/255);
-const v4f Colour::VIOLET = v4f(164.f/255, 86.f/255, 219.f/255);
-const v4f Colour::PINK = v4f(235.f/255, 131.f/255, 231.f/255);
-const v4f Colour::MAROON = v4f(117.f/255, 39.f/255, 53.f/255);
-const v4f Colour::LAVENDER = v4f(219.f/255, 196.f/255, 245.f/255);
-const v4f Colour::CYAN = v4f(179.f/255, 247.f/255, 1.0f);
-const v4f Colour::GOLD = v4f(1.0f, 210.f/255, 8.f/255);
-
-struct Material
-{
-    // TODO: I don't know if I want to keep this as an enum, versus having something more
-    // like the Principled shader in Blender
-    enum Type
-    {
-        NONE,
-        DIFFUSE,
-        METAL,
-        DIALECTRIC
-    };
-    
-    Type type;
-    v4f colour;
-    
-    // used by metal materials to control the fuzziness of reflections
-    f32 roughness;
-    
-    // the refractive index for dialectric materials
-    f32 n;
-};
-
-// TODO: Do i want each object to have it's own material, or do I want to have a master
-// material list that each object has an index into?
-struct RenderObject
-{
-    enum Type
-    {
-        SPHERE,
-        PLANE
-    };
-    
-    Material material;
-    Type type;
-    
-    union
-    {
-        Sphere sphere;
-        Plane plane;
-    };
-    
-    RenderObject()
-    {
-        material = {};
-        type = SPHERE;
-        sphere = {};
-    }
-};
-
-// TODO: perhaps also keep track of a material list?
-struct World
-{
-    RenderObject list[512];
-    u32 count;
-    
-    RenderObject* add_sphere(v3f pos, f32 radius, Material* material);
-    RenderObject* add_plane(v3f normal, f32 d, Material* material);
-};
-
-RenderObject* World::add_sphere(v3f pos, f32 radius, Material* material)
-{
-    assert(material);
-    assert(count < ARRAY_LENGTH(list));
-    
-    if (!material || count >= ARRAY_LENGTH(list))
-        return 0;
-    
-    RenderObject* object = list + count;
-    *object = {};
-    
-    object->type = RenderObject::Type::SPHERE;
-    object->sphere.pos = pos;
-    object->sphere.radius = radius;
-    object->material = *material;
-    
-    ++count;
-    
-    return object;
-}
-
-RenderObject* World::add_plane(v3f normal, f32 d, Material* material)
-{
-    assert(material);
-    assert(count < ARRAY_LENGTH(list));
-    
-    if (!material || count >= ARRAY_LENGTH(list))
-        return 0;
-    
-    RenderObject* object = list + count;
-    *object = {};
-    object->type = RenderObject::Type::PLANE;
-    object->plane.normal = normal;
-    object->plane.offset = d;
-    object->material = *material;
-    
-    ++count;
-    
-    return object;
-}
-
-static Material create_diffuse_material(v4f colour)
-{
-    Material result = {};
-    result.type = Material::Type::DIFFUSE;
-    result.colour = colour;
-    return result;
-}
-
-static Material create_metal_material(v4f colour, f32 roughness = 0.0f)
-{
-    Material result = {};
-    result.type = Material::Type::METAL;
-    result.colour = colour;
-    result.roughness = roughness;
-    return result;
-}
-
-static Material create_dialectric_material(f32 refractiveIndex)
-{
-    Material result = {};
-    result.type = Material::Type::DIALECTRIC;
-    result.colour = Colour::WHITE; // TODO: do dialectrics always have no attenuation?
-    result.n = refractiveIndex;
-    return result;
-}
 
 static inline void set_pixel(Image* image, u32 x, u32 y, v4f colour)
 {
@@ -234,7 +66,7 @@ static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1)
         return Colour::BLACK;
     
     const f32 MIN_T = 0.001f;
-    const f32 MAX_T = F32_MAX;
+    //const f32 MAX_T = F32_MAX;
     
     f32 tClosest = F32_MAX;
     v3f intersectNormal = v3f();
@@ -380,8 +212,6 @@ struct RayTracerBatch
     World* world;
 };
 
-// TODO: I should rework all my random functions so that they don't rely on 'rand' anymore since those functions
-// are not recommended for multi-threaded programs. Look into the C++ random library instead.
 DWORD run_ray_tracer(void* data)
 {
     RayTracerBatch* batchData = (RayTracerBatch*)data;
@@ -459,75 +289,13 @@ int main(int argc, char** argv)
     
     printf("Setting up rendering scene...\n");
     
+    f32 aspectRatio = (f32)image.width/image.height;
+    
     World world = {};
+    Camera camera = {};
     
-    // adding a bunch of materials
-    
-    Material materialList[32] = {};
-    u32 numMaterials = 0;
-    materialList[numMaterials++] = create_dialectric_material(1.5f);
-    materialList[numMaterials++] = create_metal_material(Colour::GOLD, 0.2f);
-    materialList[numMaterials++] = create_metal_material(Colour::SILVER, 0.01f);
-    materialList[numMaterials++] = create_diffuse_material(Colour::WHITE);
-    materialList[numMaterials++] = create_diffuse_material(Colour::RED);
-    materialList[numMaterials++] = create_diffuse_material(Colour::ORANGE);
-    materialList[numMaterials++] = create_diffuse_material(Colour::YELLOW);
-    materialList[numMaterials++] = create_diffuse_material(Colour::GREEN);
-    materialList[numMaterials++] = create_diffuse_material(Colour::BLUE);
-    materialList[numMaterials++] = create_diffuse_material(Colour::INDIGO);
-    materialList[numMaterials++] = create_diffuse_material(Colour::VIOLET);
-    materialList[numMaterials++] = create_diffuse_material(Colour::PINK);
-    materialList[numMaterials++] = create_diffuse_material(Colour::MAROON);
-    materialList[numMaterials++] = create_diffuse_material(Colour::LAVENDER);
-    materialList[numMaterials++] = create_diffuse_material(Colour::CYAN);
-    materialList[numMaterials++] = create_diffuse_material(Colour::TEAL);
-    materialList[numMaterials++] = create_diffuse_material(Colour::DARK_GREEN);
-    materialList[numMaterials++] = create_diffuse_material(Colour::BROWN);
-    
-    // creating the scene to render!
-    
-    world.add_plane(v3f(0.0f, 1.0f, 0.0f), 0.0f, materialList + 3);
-    
-    const u32 GRID_ROW_COUNT = 16;
-    const f32 GRID_CELL_SIZE = 3.5f;
-    const f32 MIN_RADIUS = 0.5f;
-    const f32 MAX_RADIUS = 0.7f;
-    
-    for (u32 z = 0; z < GRID_ROW_COUNT; ++z)
-    {
-        for (u32 x = 0; x < GRID_ROW_COUNT; ++x)
-        {
-            f32 minX = -(f32)GRID_ROW_COUNT/2*GRID_CELL_SIZE + x*GRID_CELL_SIZE + GRID_CELL_SIZE*0.5f;
-            f32 minZ = -(f32)GRID_ROW_COUNT/2*GRID_CELL_SIZE + z*GRID_CELL_SIZE + GRID_CELL_SIZE*0.5f;
-            
-            f32 sphereX = minX + random_f32(-0.5, 0.5)*GRID_CELL_SIZE*.7f;
-            f32 sphereZ = minZ + random_f32(-0.5, 0.5)*GRID_CELL_SIZE*.7f;
-            f32 sphereY = 0.55f;
-            
-            v3f pos = v3f(sphereX, sphereY, sphereZ);
-            f32 radius = random_f32(MIN_RADIUS, MAX_RADIUS);
-            
-            u32 materialIndex = random_u32(4, numMaterials);
-            f32 materialPick = random_f32();
-            if (materialPick > 0.9f)
-            {
-                materialIndex = 0;
-            }
-            
-            world.add_sphere(pos, radius, materialList + materialIndex);
-        }
-    }
-    
-    world.add_sphere(v3f(1.0f, 4.0f, 0.5f), 4.0f, materialList);
-    world.add_sphere(v3f(-11.0f, 4.0f, -5.0f), 4.0f, materialList + 1);
-    world.add_sphere(v3f(5.5f, 4.0f, 15.0f), 4.0f, materialList + 2);
-    
-    // setting up camera properties
-    
-    Camera  camera = Camera(v3f(-3.5f, 2.5f, 35), 35, (f32)image.width/image.height);
-    camera.set_target(v3f(0, .5f, 0));
-    camera.up = normalize(v3f(.2f, 10, .8f));
-    camera.set_lens(0.3f, 35.0f);
+    init_test_scene_2(&world, &camera, aspectRatio);
+    //init_demo_scene(&world, &camera, aspectRatio);
     
     // start the ray tracing!
     

@@ -1,6 +1,8 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <random>
+
 #include "types.h"
 
 static inline bool is_equal(f32 a, f32 b, f32 error = 0.0001f)
@@ -11,13 +13,21 @@ static inline bool is_equal(f32 a, f32 b, f32 error = 0.0001f)
 // returns a random value in the range [0, 1)
 static inline f64 random_f64()
 {
-    return rand() / (RAND_MAX + 1.0);
+    static thread_local std::mt19937_64 generator;
+    
+    std::uniform_real_distribution<f64> distribution(0.0, 1.0);
+    
+    return distribution(generator);
 }
 
 // returns a random value in the range [0, 1)
 static inline f32 random_f32()
 {
-    return (f32)rand() / (RAND_MAX + 1.0f);
+    static thread_local std::mt19937 generator;
+    
+    std::uniform_real_distribution<f32> distribution(0.0f, 1.0f);
+    
+    return distribution(generator);
 }
 // returns a random value in the range [min, max)
 static inline f32 random_f32(f32 min, f32 max)

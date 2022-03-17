@@ -1,20 +1,21 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.28307.1525
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.32126.317
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{911E67C6-3D85-4FCE-B560-20A9C3E3FF48}") = "main", "build\main.exe", "{A24B90E9-E49B-4A22-A025-8D31F2A09EE9}"
 	ProjectSection(DebuggerProjectSystem) = preProject
 		PortSupplier = 00000000-0000-0000-0000-000000000000
-		Executable = D:\dev\SimpleRaytracer\build\main.exe
+		Executable = D:\dev\PathTracer\build\main.exe
 		RemoteMachine = DESKTOP-S8P3QCP
-		StartingDirectory = D:\dev\SimpleRaytracer\output
+		StartingDirectory = D:\dev\PathTracer\output
 		Arguments = test_output
 		Environment = Default
 		LaunchingEngine = 00000000-0000-0000-0000-000000000000
 		UseLegacyDebugEngines = No
 		LaunchSQLEngine = No
 		AttachLaunchAction = No
+		IORedirection = Auto
 	EndProjectSection
 EndProject
 Global
