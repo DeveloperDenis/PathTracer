@@ -3,30 +3,29 @@
 
 static void write_image_to_bmp(char* fileName, Image* image)
 {
-    BITMAPFILEHEADER bmpHeader = {};
-    bmpHeader.bfType = 'MB';
-    bmpHeader.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFO);
-    bmpHeader.bfSize = bmpHeader.bfOffBits + sizeof(u32)*image->width*image->height;
+    u32 imageSizeBytes = image->width*image->height*sizeof(u32);
+    u32 fileSize = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFO) + imageSizeBytes;
     
-    BITMAPINFOHEADER bmpInfoHeader = {};
-    bmpInfoHeader.biSize = sizeof(bmpInfoHeader);
-    bmpInfoHeader.biWidth = image->width;
-    bmpInfoHeader.biHeight = -(s32)image->height;
-    bmpInfoHeader.biPlanes = 1;
-    bmpInfoHeader.biBitCount = 32;
-    bmpInfoHeader.biCompression = BI_RGB;
+    void* fileData = VirtualAlloc(0, fileSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+    assert(fileData);
     
-    BITMAPINFO bmpInfo = {};
-    bmpInfo.bmiHeader = bmpInfoHeader;
+    BITMAPFILEHEADER* bmpHeader = (BITMAPFILEHEADER*)fileData;
+    bmpHeader->bfType = 'MB';
+    bmpHeader->bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFO);
+    bmpHeader->bfSize = bmpHeader->bfOffBits + sizeof(u32)*image->width*image->height;
+    
+    BITMAPINFO* bmpInfo = (BITMAPINFO*)(bmpHeader + 1);
+    bmpInfo->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmpInfo->bmiHeader.biWidth = image->width;
+    bmpInfo->bmiHeader.biHeight = -(s32)image->height;
+    bmpInfo->bmiHeader.biPlanes = 1;
+    bmpInfo->bmiHeader.biBitCount = 32;
+    bmpInfo->bmiHeader.biCompression = BI_RGB;
     
     HANDLE fileHandle = CreateFile(fileName, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
     
-    DWORD bytesWritten;
-    WriteFile(fileHandle, &bmpHeader, sizeof(bmpHeader), &bytesWritten, 0);
-    WriteFile(fileHandle, &bmpInfo, sizeof(bmpInfo), &bytesWritten, 0);
+    u32* imagePixels = (u32*)(bmpInfo + 1);
     
-    // TODO(denis): probably very slow, should probably precalculate all the u32 values
-    // and then write them
     for (u32 i = 0; i < image->width*image->height; ++i)
     {
         v4f colour = image->pixels[i];
@@ -42,9 +41,14 @@ static void write_image_to_bmp(char* fileName, Image* image)
         u8 blue = (u8)(255.0f*colour.b);
         u8 alpha = (u8)(255.0f*colour.a);
         
-        u32 intColour = (alpha << 24) | (red << 16) | (green << 8) | blue;
-        WriteFile(fileHandle, &intColour, sizeof(u32), &bytesWritten, 0);
+        imagePixels[i] = (u32)((alpha << 24) | (red << 16) | (green << 8) | blue);
     }
+    
+    DWORD bytesWritten;
+    WriteFile(fileHandle, fileData, fileSize, &bytesWritten, 0);
+    assert(bytesWritten == fileSize);
+    
+    VirtualFree(imagePixels, 0, MEM_RELEASE);
 }
 
 #endif //FILE_IO_H

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <assert.h>
+#include <math.h>
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -8,8 +9,9 @@
 #include "types.h"
 #include "memory.h"
 #include "strings.h"
+#include "vectors.cpp"
+#include "image.h"
 #include "file_io.h"
-
 #include "geometry.cpp"
 #include "camera.cpp"
 #include "render_world.cpp"
@@ -34,19 +36,6 @@
 #define MAX_RAY_DEPTH 5
 #define IMAGE_WIDTH 800
 #endif
-
-static inline void set_pixel(Image* image, u32 x, u32 y, v4f colour)
-{
-    image->pixels[y*image->width + x] = colour;
-}
-
-static inline void fill_image(Image* image, v4f colour)
-{
-    for (u32 i = 0; i < image->width*image->height; ++i)
-    {
-        *(image->pixels + i) = colour;
-    }
-}
 
 
 // calculates reflectance for a material using Schlick's Approximation

@@ -21,7 +21,7 @@ Camera::Camera(v3f pos, f32 fovDegrees, f32 aspectRatio)
     this->dir = v3f(0.0f, 0.0f, -1.0f);
     this->up = v3f(0.0f, 1.0f, 0.0f);
     
-    this->fov = degrees_to_radians(fovDegrees);
+    this->fov = DEGREES_TO_RADIANS(fovDegrees);
     this->aspectRatio = aspectRatio;
     
     focusDistance = 1.0f;
