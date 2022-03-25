@@ -5,6 +5,20 @@
 
 #include "types.h"
 
+static inline f32 clamp(f32 value, f32 min, f32 max)
+{
+    if (value < min)
+        return min;
+    else if (value > max)
+        return max;
+    return value;
+}
+
+static inline v4f clamp(v4f v, f32 min, f32 max)
+{
+    return v4f(clamp(v.x, min, max), clamp(v.y, min, max), clamp(v.z, min, max), clamp(v.w, min, max));
+}
+
 static inline bool is_equal(f32 a, f32 b, f32 error = 0.0001f)
 {
     return ABS_VALUE(a - b) <= error;
@@ -32,7 +46,7 @@ static inline f32 random_f32()
 // returns a random value in the range [min, max)
 static inline f32 random_f32(f32 min, f32 max)
 {
-    assert(min < max);
+    assert(min <= max);
     return random_f32() * (max - min) + min;
 }
 
@@ -44,13 +58,13 @@ static inline u32 random_u32(u32 scale)
 
 static inline u32 random_u32(u32 min, u32 max)
 {
-    assert(min < max);
+    assert(min <= max);
     return (u32)random_f32((f32)min, (f32)max);
 }
 
 static inline s32 random_s32(s32 min, s32 max)
 {
-    assert(min < max);
+    assert(min <= max);
     return (s32)random_f32((f32)min, (f32)max);
 }
 

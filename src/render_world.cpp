@@ -54,7 +54,7 @@ Material Material::dialectric(f32 refractiveIndex)
 * World Functions
 */
 
-RenderObject* World::add_sphere(v3f pos, f32 radius, Material* material)
+RenderObject* World::add_sphere(v3f pos, f32 radius, Material* material, v3f velocity)
 {
     assert(material);
     assert(count < ARRAY_LENGTH(list));
@@ -69,6 +69,7 @@ RenderObject* World::add_sphere(v3f pos, f32 radius, Material* material)
     object->sphere.pos = pos;
     object->sphere.radius = radius;
     object->material = *material;
+    object->velocity = velocity;
     
     ++count;
     

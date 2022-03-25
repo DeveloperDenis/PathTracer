@@ -65,6 +65,10 @@ struct RenderObject
     Material material;
     Type type;
     
+    // used for objects that move during the render interval
+    // NOTE: the position of all objects are assumed to be defined at time = 0.0, so all times past that will be affected by the velocity
+    v3f velocity;
+    
     union
     {
         Sphere sphere;
@@ -85,7 +89,11 @@ struct World
     RenderObject list[4192];
     u32 count;
     
-    RenderObject* add_sphere(v3f pos, f32 radius, Material* material);
+    // defines the interval during which our rendering takes place
+    f32 startTime;
+    f32 endTime;
+    
+    RenderObject* add_sphere(v3f pos, f32 radius, Material* material, v3f velocity = v3f());
     RenderObject* add_plane(v3f normal, f32 d, Material* material);
 };
 

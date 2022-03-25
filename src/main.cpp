@@ -9,10 +9,11 @@
 #include "memory.h"
 #include "strings.h"
 #include "file_io.h"
+
 #include "geometry.cpp"
 #include "camera.cpp"
 #include "render_world.cpp"
-#include "scene_init.h"
+#include "scene_init.cpp"
 
 #define FILE_EXT ".bmp"
 
@@ -29,9 +30,9 @@
 #define MAX_RAY_DEPTH 50
 #define IMAGE_WIDTH 1920
 #else
-#define SAMPLES_PER_PIXEL 16
+#define SAMPLES_PER_PIXEL 32
 #define MAX_RAY_DEPTH 5
-#define IMAGE_WIDTH 640
+#define IMAGE_WIDTH 800
 #endif
 
 static inline void set_pixel(Image* image, u32 x, u32 y, v4f colour)
@@ -58,7 +59,7 @@ static f64 reflectance(f64 cosine, f64 refractRatio)
 }
 
 // returns colour of pixel after ray cast
-static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1)
+static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
 {
     v4f resultColour = v4f();
     
@@ -84,8 +85,8 @@ static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1)
         {
             case RenderObject::Type::SPHERE:
             {
-                Sphere* sphere = &object->sphere;
-                t = intersection_test(ray, sphere);
+                Sphere sphere = Sphere(object->sphere.pos + time*object->velocity, object->sphere.radius);
+                t = intersection_test(ray, &sphere);
             } break;
             
             case RenderObject::Type::PLANE:
@@ -224,14 +225,17 @@ DWORD run_ray_tracer(void* data)
             
             for (u32 sampleIndex = 0; sampleIndex < SAMPLES_PER_PIXEL; ++sampleIndex)
             {
+                f32 rayTime = random_f32(batchData->world->startTime, batchData->world->endTime);
+                
                 f32 u = (pixelX + random_f32())/batchData->outputImage->width;
                 f32 v = (pixelY - random_f32())/batchData->outputImage->height;
                 
                 Ray ray = batchData->camera->get_ray(u, v);
-                pixelColour += cast_ray(&ray, batchData->world, MAX_RAY_DEPTH);
+                pixelColour += cast_ray(&ray, batchData->world, MAX_RAY_DEPTH, rayTime);
             }
             
-            set_pixel(batchData->outputImage, pixelX, pixelY, pixelColour/SAMPLES_PER_PIXEL);
+            pixelColour = clamp(pixelColour/SAMPLES_PER_PIXEL, 0.0f, 1.0f);
+            set_pixel(batchData->outputImage, pixelX, pixelY, pixelColour);
         }
     }
     
@@ -294,8 +298,7 @@ int main(int argc, char** argv)
     World world = {};
     Camera camera = {};
     
-    init_test_scene_2(&world, &camera, aspectRatio);
-    //init_demo_scene(&world, &camera, aspectRatio);
+    init_test_scene_3(&world, &camera, aspectRatio);
     
     // start the ray tracing!
     
@@ -328,7 +331,15 @@ int main(int argc, char** argv)
         threadData[threadIndex]->world = &world;
         
         u32 x1, x2, y1, y2;
+        
+#if NUM_THREADS == 1
+        x1 = 0;
+        x2 = image.width;
+        y1 = 0;
+        y2 = image.height;
+#else
         get_pixel_block(nextBlock, image.width, image.height, &x1, &y1, &x2, &y2);
+#endif
         
         threadData[threadIndex]->startX = x1;
         threadData[threadIndex]->startY = y1;
@@ -358,6 +369,12 @@ int main(int argc, char** argv)
             u32 threadIndex = result - WAIT_OBJECT_0;
             CloseHandle(threadHandles[threadIndex]);
             
+#if NUM_THREADS == 1
+            memory_free(threadData[threadIndex]);
+            threadData[threadIndex] = threadData[runningThreads - 1];
+            threadHandles[threadIndex] = threadHandles[runningThreads - 1];
+            --runningThreads;
+#else
             u32 x1, y1, x2, y2;
             if (get_pixel_block(nextBlock, image.width, image.height, &x1, &y1, &x2, &y2))
             {
@@ -377,6 +394,7 @@ int main(int argc, char** argv)
                 threadHandles[threadIndex] = threadHandles[runningThreads - 1];
                 --runningThreads;
             }
+#endif
             
             ++finishedBlocks;
             printf("%f%%\n", ((f32)finishedBlocks/totalBlocks)*100.0f);
