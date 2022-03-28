@@ -48,7 +48,7 @@ static f64 reflectance(f64 cosine, f64 refractRatio)
 }
 
 // returns colour of pixel after ray cast
-static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
+static v4f cast_ray(Ray ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
 {
     v4f resultColour = v4f();
     
@@ -75,12 +75,12 @@ static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
             case RenderObject::Type::SPHERE:
             {
                 Sphere sphere = Sphere(object->sphere.pos + time*object->velocity, object->sphere.radius);
-                t = intersection_test(ray, &sphere);
+                t = intersection_test(ray, sphere);
             } break;
             
             case RenderObject::Type::PLANE:
             {
-                Plane* plane = &object->plane;
+                Plane plane = object->plane;
                 t = intersection_test(ray, plane);
             } break;
         }
@@ -89,7 +89,7 @@ static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
         {
             tClosest = t;
             
-            intersectPoint = ray->at(t);
+            intersectPoint = ray.at(t);
             
             if (object->type == RenderObject::Type::SPHERE)
                 intersectNormal = normalize(intersectPoint - object->sphere.pos);
@@ -112,7 +112,7 @@ static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
                 scatterDirection = intersectNormal;
             
             Ray reflectRay = Ray(intersectPoint, scatterDirection, false);
-            v4f rayColour = cast_ray(&reflectRay, world, maxDepth - 1);
+            v4f rayColour = cast_ray(reflectRay, world, maxDepth - 1);
             
             // attenuate using the colour of the material
             resultColour = hadamard(material->colour, rayColour);
@@ -120,7 +120,7 @@ static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
         else if (material->type == Material::Type::METAL)
         {
             // the reflected ray is calculated assuming the surface is a perfect mirror
-            v3f reflectedDir = reflect_direction(ray->dir, intersectNormal);
+            v3f reflectedDir = reflect_direction(ray.dir, intersectNormal);
             
             if (material->roughness > 0.0f)
             {
@@ -136,7 +136,7 @@ static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
             
             if (dot(reflectedDir, intersectNormal) > 0)
             {
-                v4f rayColour = cast_ray(&reflectedRay, world, maxDepth - 1);
+                v4f rayColour = cast_ray(reflectedRay, world, maxDepth - 1);
                 resultColour = hadamard(material->colour, rayColour);
             }
             else
@@ -148,10 +148,10 @@ static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
             f32 worldIndex = 1.0f; // index of refraction of the world, air = 1.0
             
             f32 refractRatio = worldIndex/material->n;
-            if (dot(ray->dir, intersectNormal) > 0.0f) // if ray and normal in same direction
+            if (dot(ray.dir, intersectNormal) > 0.0f) // if ray and normal in same direction
                 refractRatio = 1.0f/refractRatio;
             
-            f32 cosTheta = dot(-ray->dir, intersectNormal);
+            f32 cosTheta = dot(-ray.dir, intersectNormal);
             f32 sinTheta = (f32)sqrt(1 - cosTheta*cosTheta);
             
             v3f newRayDir = v3f();
@@ -163,13 +163,13 @@ static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
             if (internalReflection || shouldReflect)
             {
                 // Refraction impossible, so the ray must reflect
-                newRayDir = reflect_direction(ray->dir, intersectNormal);
+                newRayDir = reflect_direction(ray.dir, intersectNormal);
             }
             else
             {
                 // Refraction!
                 
-                v3f rayPerpendicular = (refractRatio)*(ray->dir + cosTheta*intersectNormal);
+                v3f rayPerpendicular = (refractRatio)*(ray.dir + cosTheta*intersectNormal);
                 v3f rayParallel = (f32)(-sqrt( ABS_VALUE(1 - norm_squared(rayPerpendicular)))) * intersectNormal;
                 
                 newRayDir = rayPerpendicular + rayParallel;
@@ -177,14 +177,14 @@ static v4f cast_ray(Ray* ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
             
             Ray newRay = Ray(intersectPoint, newRayDir, false);
             
-            v4f rayColour = cast_ray(&newRay, world, maxDepth - 1);
+            v4f rayColour = cast_ray(newRay, world, maxDepth - 1);
             resultColour = hadamard(material->colour, rayColour);
         }
     }
     else
     {
         // if no collisions we draw a simple gradient
-        f32 ratio = 0.5f*(ray->dir.y + 1.0f);
+        f32 ratio = 0.5f*(ray.dir.y + 1.0f);
         resultColour = (1.0f - ratio)*Colour::WHITE + ratio*v4f(0.7f, 0.8f, 0.9f);
     }
     
@@ -220,7 +220,7 @@ DWORD run_ray_tracer(void* data)
                 f32 v = (pixelY - random_f32())/batchData->outputImage->height;
                 
                 Ray ray = batchData->camera->get_ray(u, v);
-                pixelColour += cast_ray(&ray, batchData->world, MAX_RAY_DEPTH, rayTime);
+                pixelColour += cast_ray(ray, batchData->world, MAX_RAY_DEPTH, rayTime);
             }
             
             pixelColour = clamp(pixelColour/SAMPLES_PER_PIXEL, 0.0f, 1.0f);

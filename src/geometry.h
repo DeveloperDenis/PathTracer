@@ -30,6 +30,9 @@ struct Plane
 
 struct Rect3f
 {
+    // create a Rect3f from a minimum and maximum corner
+    static Rect3f from_bounds(v3f min, v3f max);
+    
     Rect3f() : pos(v3f()), halfWidth(0.5f), halfHeight(0.5f), halfLength(0.5f)  {}
     Rect3f(v3f pos, f32 width, f32 height, f32 length) : pos(pos), halfWidth(width*0.5f), halfHeight(height*0.5f), halfLength(length*0.5f) {}
     
@@ -46,13 +49,14 @@ struct Rect3f
     
     v3f pos;
     f32 halfWidth, halfHeight, halfLength;
-    
-    
 };
 
 /**
 *   FUNCTIONS
 */
+
+Rect3f bounding_box(Rect3f rect1, Rect3f rect2);
+Rect3f bounding_box(Sphere sphere, f32 startTime = 0.0f, f32 endTime = 0.0f);
 
 // reflect a direction vector about a normal
 static inline v3f reflect_direction(v3f dir, v3f normal)
@@ -63,14 +67,14 @@ static inline v3f reflect_direction(v3f dir, v3f normal)
 }
 
 // return a reflected ray about the given normal
-static inline Ray reflect_ray(Ray* ray, v3f point, v3f normal)
+static inline Ray reflect_ray(Ray ray, v3f point, v3f normal)
 {
-    return Ray(point, reflect_direction(ray->dir, normal), false);
+    return Ray(point, reflect_direction(ray.dir, normal), false);
 }
 
 
-static f32 intersection_test(Ray* ray, Sphere* sphere);
-static f32 intersection_test(Ray* ray, Plane* plane);
-static f32 intersection_test(Ray* ray, Rect3f* rect);
+static f32 intersection_test(Ray ray, Sphere sphere);
+static f32 intersection_test(Ray ray, Plane plane);
+static f32 intersection_test(Ray ray, Rect3f rect);
 
 #endif //GEOMETRY_H

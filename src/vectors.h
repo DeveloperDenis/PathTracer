@@ -30,6 +30,12 @@ union v3f
         f32 y;
         f32 z;
     };
+    struct
+    {
+        f32 w;
+        f32 h;
+        f32 l;
+    };
     f32 e[3];
 };
 
