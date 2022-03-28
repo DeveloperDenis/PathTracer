@@ -125,7 +125,7 @@ void init_test_scene_2(World* world, Camera* camera, f32 aspectRatio)
     
     // NOTE: I can't put up three walls at once because it eats away all the light
     world->add_plane(v3f(0.0f, 0.0f, 1.0f), -3.0f, &wallMaterial); // back wall
-    //world->add_plane(v3f(1.0f, 0.0f, 0.0f), -5.0f, &testMaterial); // left wall
+    //world->add_plane(v3f(1.0f, 0.0f, 0.0f), -5.0f, &wallMaterial); // left wall
     world->add_plane(v3f(-1.0f, 0.0, 0.0f), -((f32)NUM_ROWS*(f32)CELL_SIZE) - 3.0f, &wallMaterial); // right wall
     world->add_plane(v3f(0.0f, 1.0f, 0.0f), -0.1f, &glassMaterial); // floor
     

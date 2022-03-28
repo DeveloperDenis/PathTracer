@@ -5,7 +5,7 @@
 
 struct Ray
 {
-    Ray(v3f rayOrigin, v3f rayDir, bool normalized = true) ;
+    Ray(v3f rayOrigin, v3f rayDir, bool normalized = true);
     
     v3f at(f32 t) { return origin + dir*t; }
     
@@ -26,6 +26,28 @@ struct Plane
 {
     v3f normal;
     f32 offset;
+};
+
+struct Rect3f
+{
+    Rect3f() : pos(v3f()), halfWidth(0.5f), halfHeight(0.5f), halfLength(0.5f)  {}
+    Rect3f(v3f pos, f32 width, f32 height, f32 length) : pos(pos), halfWidth(width*0.5f), halfHeight(height*0.5f), halfLength(length*0.5f) {}
+    
+    f32 width() { return halfWidth*2.0f; }
+    f32 height() { return halfHeight*2.0f; }
+    f32 length() { return halfLength*2.0f; }
+    
+    f32 left() { return pos.x - halfWidth; }
+    f32 right() { return pos.x + halfWidth; }
+    f32 bottom() { return pos.y - halfHeight; }
+    f32 top() { return pos.y + halfHeight; }
+    f32 back() { return pos.z - halfLength; }
+    f32 front() { return pos.z + halfLength; }
+    
+    v3f pos;
+    f32 halfWidth, halfHeight, halfLength;
+    
+    
 };
 
 /**
@@ -49,5 +71,6 @@ static inline Ray reflect_ray(Ray* ray, v3f point, v3f normal)
 
 static f32 intersection_test(Ray* ray, Sphere* sphere);
 static f32 intersection_test(Ray* ray, Plane* plane);
+static f32 intersection_test(Ray* ray, Rect3f* rect);
 
 #endif //GEOMETRY_H

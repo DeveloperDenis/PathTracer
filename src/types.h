@@ -18,6 +18,13 @@
 
 #define DEGREES_TO_RADIANS(degrees) ((degrees) * (MATH_PI/180.0f))
 
+#define SWAP(a, b, Type) do \
+{ \
+Type c = (a); \
+(a) = (b); \
+(b) = c; \
+} while(0)
+
 typedef float f32;
 typedef double f64;
 
