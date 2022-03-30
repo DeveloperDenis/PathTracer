@@ -2,6 +2,14 @@
 
 // v3f operators
 
+v3f& v3f::operator+=(v3f v)
+{
+    this->x += v.x;
+    this->y += v.y;
+    this->z += v.z;
+    return *this;
+}
+
 v3f operator+(v3f a, v3f b)
 {
     v3f result;

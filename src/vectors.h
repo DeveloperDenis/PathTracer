@@ -37,6 +37,9 @@ union v3f
         f32 l;
     };
     f32 e[3];
+    
+    f32 operator[](u32 index) { return e[index]; }
+    v3f& operator+=(v3f v);
 };
 
 union v4f

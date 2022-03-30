@@ -51,47 +51,68 @@ Material Material::dialectric(f32 refractiveIndex)
 }
 
 /*
+* Render Object Functions
+*/
+
+v3f SphereObject::pos(f32 time)
+{
+    return sphere.pos + velocity*time;
+}
+
+Rect3f SphereObject::get_bounding_box(f32 startTime, f32 endTime)
+{
+    Sphere startSphere = sphere;
+    startSphere.pos += velocity*startTime;
+    
+    Sphere endSphere = sphere;
+    endSphere.pos += velocity*endTime;
+    
+    Rect3f startBox = bounding_box(startSphere);
+    Rect3f endBox = bounding_box(endSphere);
+    
+    return bounding_box(startBox, endBox);
+}
+
+/*
 * World Functions
 */
 
-RenderObject* World::add_sphere(v3f pos, f32 radius, Material* material, v3f velocity)
+SphereObject* World::add_sphere(v3f pos, f32 radius, Material* material, v3f velocity)
 {
     assert(material);
-    assert(count < ARRAY_LENGTH(list));
+    assert(objectCount < ARRAY_LENGTH(objects));
     
-    if (!material || count >= ARRAY_LENGTH(list))
+    if (!material || objectCount >= ARRAY_LENGTH(objects))
         return 0;
     
-    RenderObject* object = list + count;
+    SphereObject* object = objects + objectCount;
     *object = {};
     
-    object->type = RenderObject::Type::SPHERE;
     object->sphere.pos = pos;
     object->sphere.radius = radius;
     object->material = *material;
     object->velocity = velocity;
     
-    ++count;
+    ++objectCount;
     
     return object;
 }
 
-RenderObject* World::add_plane(v3f normal, f32 d, Material* material)
+PlaneObject* World::add_plane(v3f normal, f32 d, Material* material)
 {
     assert(material);
-    assert(count < ARRAY_LENGTH(list));
+    assert(planeCount < ARRAY_LENGTH(planes));
     
-    if (!material || count >= ARRAY_LENGTH(list))
+    if (!material || planeCount >= ARRAY_LENGTH(planes))
         return 0;
     
-    RenderObject* object = list + count;
+    PlaneObject* object = planes + planeCount;
     *object = {};
-    object->type = RenderObject::Type::PLANE;
     object->plane.normal = normal;
     object->plane.offset = d;
     object->material = *material;
     
-    ++count;
+    ++planeCount;
     
     return object;
 }

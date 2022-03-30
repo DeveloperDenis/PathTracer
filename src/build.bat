@@ -1,6 +1,6 @@
 @echo off
 
-set DEBUG=1
+set DEBUG=0
 
 pushd ..\build
 

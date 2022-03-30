@@ -56,7 +56,7 @@ struct Rect3f
 */
 
 Rect3f bounding_box(Rect3f rect1, Rect3f rect2);
-Rect3f bounding_box(Sphere sphere, f32 startTime = 0.0f, f32 endTime = 0.0f);
+Rect3f bounding_box(Sphere sphere);
 
 // reflect a direction vector about a normal
 static inline v3f reflect_direction(v3f dir, v3f normal)
@@ -75,6 +75,7 @@ static inline Ray reflect_ray(Ray ray, v3f point, v3f normal)
 
 static f32 intersection_test(Ray ray, Sphere sphere);
 static f32 intersection_test(Ray ray, Plane plane);
-static f32 intersection_test(Ray ray, Rect3f rect);
+
+static bool hit_test(Ray ray, Rect3f rect);
 
 #endif //GEOMETRY_H

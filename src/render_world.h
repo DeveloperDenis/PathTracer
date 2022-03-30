@@ -54,47 +54,45 @@ struct Material
 
 // TODO: Do i want each object to have it's own material, or do I want to have a master
 // material list that each object has an index into?
-struct RenderObject
+struct SphereObject
 {
-    enum Type
-    {
-        SPHERE,
-        PLANE
-    };
-    
     Material material;
-    Type type;
+    Sphere sphere;
     
     // used for objects that move during the render interval
     // NOTE: the position of all objects are assumed to be defined at time = 0.0, so all times past that will be affected by the velocity
     v3f velocity;
     
-    union
-    {
-        Sphere sphere;
-        Plane plane;
-    };
+    SphereObject() : material({}), sphere({}) {}
     
-    RenderObject()
-    {
-        material = {};
-        type = SPHERE;
-        sphere = {};
-    }
+    // get the object position at the given time
+    v3f pos(f32 time = 0.0f);
+    Rect3f get_bounding_box(f32 startTime = 0.0f, f32 endTime = 0.0f);
+};
+
+struct PlaneObject
+{
+    Material material;
+    Plane plane;
+    
+    PlaneObject() : material({}), plane({}) {}
 };
 
 // TODO: perhaps also keep track of a material list?
 struct World
 {
-    RenderObject list[4192];
-    u32 count;
+    u32 objectCount;
+    SphereObject objects[4192];
+    
+    u32 planeCount;
+    PlaneObject planes[64];
     
     // defines the interval during which our rendering takes place
     f32 startTime;
     f32 endTime;
     
-    RenderObject* add_sphere(v3f pos, f32 radius, Material* material, v3f velocity = v3f());
-    RenderObject* add_plane(v3f normal, f32 d, Material* material);
+    SphereObject* add_sphere(v3f pos, f32 radius, Material* material, v3f velocity = v3f());
+    PlaneObject* add_plane(v3f normal, f32 d, Material* material);
 };
 
 #endif //RENDER_WORLD_H

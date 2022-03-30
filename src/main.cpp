@@ -25,7 +25,7 @@
 #define BLOCK_SIZE 32
 #define NUM_THREADS 16
 
-#define RAY_TRACER_QUALITY 0
+#define RAY_TRACER_QUALITY 1
 
 #if RAY_TRACER_QUALITY == 1
 #define SAMPLES_PER_PIXEL 200
@@ -37,6 +37,122 @@
 #define IMAGE_WIDTH 800
 #endif
 
+struct BVH
+{
+    Rect3f boundingBox;
+    SphereObject* object; // only valid in the leaf nodes
+    
+    BVH* left;
+    BVH* right;
+};
+
+static f32 intersection_test(Ray ray, BVH* bvh, f32 time, SphereObject** outObject)
+{
+    f32 tResult = F32_MAX;
+    const f32 MIN_T = 0.001f;
+    
+    if (!bvh)
+        return tResult;
+    
+    if (bvh->object) // reached a leaf node
+    {
+        *outObject = bvh->object;
+        
+        Sphere testSphere = bvh->object->sphere;
+        testSphere.pos += time*bvh->object->velocity;
+        
+        tResult = intersection_test(ray, testSphere);
+    }
+    else if (hit_test(ray, bvh->boundingBox))
+    {
+        SphereObject* leftObject = 0;
+        SphereObject* rightObject = 0;
+        
+        f32 tLeft = intersection_test(ray, bvh->left, time, &leftObject);
+        f32 tRight = intersection_test(ray, bvh->right, time, &rightObject);
+        
+        if (tLeft < tRight && tLeft > MIN_T)
+        {
+            tResult = tLeft;
+            *outObject = leftObject;
+        }
+        else if (tRight < tLeft && tRight > MIN_T)
+        {
+            tResult = tRight;
+            *outObject = rightObject;
+        }
+    }
+    
+    return tResult;
+}
+
+static void sort_render_objects(SphereObject* list, u32 startIndex, u32 endIndex, u32 sortAxis)
+{
+    assert(list);
+    assert(sortAxis >= 0 && sortAxis < 3);
+    assert(startIndex < endIndex);
+    
+    if (endIndex - startIndex == 1)
+        return;
+    else if (endIndex - startIndex == 2)
+    {
+        if (list[startIndex].pos()[sortAxis] > list[startIndex + 1].pos()[sortAxis])
+            SWAP(list[startIndex], list[startIndex + 1], SphereObject);
+    }
+    else
+    {
+        // just choose the first element as the pivot, though I could use any other method
+        u32 pivotIndex = startIndex;
+        
+        u32 splitIndex = startIndex + 1;
+        for (u32 i = startIndex + 1; i < endIndex; ++i)
+        {
+            if (list[i].pos()[sortAxis] < list[pivotIndex].pos()[sortAxis])
+            {
+                SWAP(list[i], list[splitIndex], SphereObject);
+                ++splitIndex;
+            }
+        }
+        
+        SWAP(list[pivotIndex], list[splitIndex - 1], SphereObject);
+        
+        sort_render_objects(list, startIndex, splitIndex, sortAxis);
+        
+        // only sort the other half if the pivot wasn't the largest element in the list
+        if (splitIndex != endIndex)
+            sort_render_objects(list, splitIndex, endIndex, sortAxis);
+    }
+}
+
+static BVH* build_bvh_tree(SphereObject* objects, u32 startIndex, u32 endIndex, f32 startTime = 0.0f, f32 endTime = 0.0f)
+{
+    u32 sortAxis = random_u32(0, 3);
+    
+    BVH* newNode = 0;
+    
+    if (endIndex - startIndex == 1)
+    {
+        newNode = (BVH*)memory_alloc(sizeof(BVH));
+        newNode->object = objects + startIndex;
+        newNode->boundingBox = objects[startIndex].get_bounding_box(startTime, endTime);
+    }
+    else
+    {
+        sort_render_objects(objects, startIndex, endIndex, sortAxis);
+        
+        u32 midIndex = (startIndex + endIndex)/2;
+        
+        BVH* leftNode = build_bvh_tree(objects, startIndex, midIndex, startTime, endTime);
+        BVH* rightNode = build_bvh_tree(objects, midIndex, endIndex, startTime, endTime);
+        
+        newNode = (BVH*)memory_alloc(sizeof(BVH));
+        newNode->left = leftNode;
+        newNode->right = rightNode;
+        newNode->boundingBox = bounding_box(leftNode->boundingBox, rightNode->boundingBox);
+    }
+    
+    return newNode;
+}
 
 // calculates reflectance for a material using Schlick's Approximation
 static f64 reflectance(f64 cosine, f64 refractRatio)
@@ -48,7 +164,7 @@ static f64 reflectance(f64 cosine, f64 refractRatio)
 }
 
 // returns colour of pixel after ray cast
-static v4f cast_ray(Ray ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
+static v4f cast_ray(Ray ray, World* world, BVH* bvh, u32 maxDepth = 1, f32 time = 0.0f)
 {
     v4f resultColour = v4f();
     
@@ -56,7 +172,6 @@ static v4f cast_ray(Ray ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
         return Colour::BLACK;
     
     const f32 MIN_T = 0.001f;
-    //const f32 MAX_T = F32_MAX;
     
     f32 tClosest = F32_MAX;
     v3f intersectNormal = v3f();
@@ -64,40 +179,36 @@ static v4f cast_ray(Ray ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
     Material* material = 0;
     
     // checking for intersection
-    for (u32 i = 0; i < world->count; ++i)
+    for (u32 i = 0; i < world->planeCount; ++i) // plane objects
     {
-        RenderObject* object = world->list + i;
-        
         f32 t = F32_MIN;
         
-        switch(object->type)
-        {
-            case RenderObject::Type::SPHERE:
-            {
-                Sphere sphere = Sphere(object->sphere.pos + time*object->velocity, object->sphere.radius);
-                t = intersection_test(ray, sphere);
-            } break;
-            
-            case RenderObject::Type::PLANE:
-            {
-                Plane plane = object->plane;
-                t = intersection_test(ray, plane);
-            } break;
-        }
+        Plane plane = world->planes[i].plane;
+        t = intersection_test(ray, plane);
         
         if (t > MIN_T && t < tClosest)
         {
             tClosest = t;
-            
             intersectPoint = ray.at(t);
-            
-            if (object->type == RenderObject::Type::SPHERE)
-                intersectNormal = normalize(intersectPoint - object->sphere.pos);
-            else if (object->type == RenderObject::Type::PLANE)
-                intersectNormal = object->plane.normal;
-            
-            material = &object->material;
+            intersectNormal= plane.normal;
+            material = &world->planes[i].material;
         }
+    }
+    
+    SphereObject* testObject = 0;
+    f32 t = intersection_test(ray, bvh, time, &testObject);
+    if (t > MIN_T && t < tClosest)
+    {
+        assert(testObject);
+        
+        tClosest = t;
+        
+        Sphere testSphere = Sphere(testObject->sphere.pos + time*testObject->velocity, testObject->sphere.radius);
+        
+        intersectPoint = ray.at(t);
+        intersectNormal = normalize(intersectPoint - testSphere.pos);
+        
+        material = &testObject->material;
     }
     
     // calculating colour for pixel
@@ -112,7 +223,7 @@ static v4f cast_ray(Ray ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
                 scatterDirection = intersectNormal;
             
             Ray reflectRay = Ray(intersectPoint, scatterDirection, false);
-            v4f rayColour = cast_ray(reflectRay, world, maxDepth - 1);
+            v4f rayColour = cast_ray(reflectRay, world, bvh, maxDepth - 1, time);
             
             // attenuate using the colour of the material
             resultColour = hadamard(material->colour, rayColour);
@@ -136,7 +247,7 @@ static v4f cast_ray(Ray ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
             
             if (dot(reflectedDir, intersectNormal) > 0)
             {
-                v4f rayColour = cast_ray(reflectedRay, world, maxDepth - 1);
+                v4f rayColour = cast_ray(reflectedRay, world, bvh, maxDepth - 1, time);
                 resultColour = hadamard(material->colour, rayColour);
             }
             else
@@ -177,7 +288,7 @@ static v4f cast_ray(Ray ray, World* world, u32 maxDepth = 1, f32 time = 0.0f)
             
             Ray newRay = Ray(intersectPoint, newRayDir, false);
             
-            v4f rayColour = cast_ray(newRay, world, maxDepth - 1);
+            v4f rayColour = cast_ray(newRay, world, bvh, maxDepth - 1, time);
             resultColour = hadamard(material->colour, rayColour);
         }
     }
@@ -200,6 +311,7 @@ struct RayTracerBatch
     
     Camera* camera;
     World* world;
+    BVH* bvh;
 };
 
 DWORD run_ray_tracer(void* data)
@@ -220,7 +332,7 @@ DWORD run_ray_tracer(void* data)
                 f32 v = (pixelY - random_f32())/batchData->outputImage->height;
                 
                 Ray ray = batchData->camera->get_ray(u, v);
-                pixelColour += cast_ray(ray, batchData->world, MAX_RAY_DEPTH, rayTime);
+                pixelColour += cast_ray(ray, batchData->world, batchData->bvh, MAX_RAY_DEPTH, rayTime);
             }
             
             pixelColour = clamp(pixelColour/SAMPLES_PER_PIXEL, 0.0f, 1.0f);
@@ -287,7 +399,10 @@ int main(int argc, char** argv)
     World world = {};
     Camera camera = {};
     
-    init_test_scene_3(&world, &camera, aspectRatio);
+    init_test_scene_2(&world, &camera, aspectRatio);
+    
+    BVH* bvh = build_bvh_tree(world.objects, 0, world.objectCount, world.startTime, world.endTime);
+    assert(bvh);
     
     // start the ray tracing!
     
@@ -318,6 +433,7 @@ int main(int argc, char** argv)
         threadData[threadIndex]->outputImage = &image;
         threadData[threadIndex]->camera = &camera;
         threadData[threadIndex]->world = &world;
+        threadData[threadIndex]->bvh = bvh;
         
         u32 x1, x2, y1, y2;
         

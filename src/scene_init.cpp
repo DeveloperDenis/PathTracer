@@ -153,7 +153,10 @@ void init_test_scene_3(World* world, Camera* camera, f32 aspectRatio)
     Material materials[] = 
     {
         Material::diffuse(Colour::PINK),
-        Material::diffuse(Colour::YELLOW)
+        Material::diffuse(Colour::YELLOW),
+        Material::diffuse(Colour::BROWN),
+        Material::diffuse(Colour::MAROON),
+        Material::dialectric(1.42f)
     };
     
     v3f sphereVelocity = v3f(0.5f, 0.0f, 0.0f);
@@ -162,10 +165,13 @@ void init_test_scene_3(World* world, Camera* camera, f32 aspectRatio)
     world->endTime = 1.0f;
     
     world->add_sphere(v3f(-1.0f, 2.0f, -2.0f), 0.5f, materials, sphereVelocity);
-    world->add_sphere(v3f(2.0f, 1.01f, -3.5f), 1.0f, materials + 1, v3f(0.0f, 0.1f, 0.0f));
+    world->add_sphere(v3f(2.0f, 1.0f, -3.5f), 1.0f, materials + 1, v3f(0.0f, 0.1f, 0.0f));
+    world->add_sphere(v3f(-1.5f, 3.5f, -0.5f), 0.75f, materials + 2);
+    world->add_sphere(v3f(-0.5f, 1.2f, -0.6f), 0.3f, materials + 3);
+    world->add_sphere(v3f(-1.9f, 1.5f, -3.0f), 1.2f, materials + 4);
     
     // set up camera
     
-    v3f cameraPos = v3f(0.0f, 2.0f, 2.0f);
-    *camera = Camera(cameraPos, 45.0f, aspectRatio);
+    v3f cameraPos = v3f(0.0f, 2.0f, 3.0f);
+    *camera = Camera(cameraPos, 55.0f, aspectRatio);
 }

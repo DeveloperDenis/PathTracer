@@ -22,7 +22,7 @@ Rect3f bounding_box(Rect3f rect1, Rect3f rect2)
     f32 maxX = MAX_VALUE(rect1.right(), rect2.right());
     
     f32 minY = MIN_VALUE(rect1.bottom(), rect2.bottom());
-    f32 maxY = MAX_VALUE(rect2.top(), rect2.top());
+    f32 maxY = MAX_VALUE(rect1.top(), rect2.top());
     
     f32 minZ = MIN_VALUE(rect1.back(), rect2.back());
     f32 maxZ = MAX_VALUE(rect1.front(), rect2.front());
@@ -38,7 +38,7 @@ Rect3f bounding_box(Sphere sphere)
 
 static f32 intersection_test(Ray ray, Sphere sphere)
 {
-    f32 tResult = F32_MIN;
+    f32 tResult = F32_MAX;
     
     // TODO: could reduce number of calculations if I precalculate some values and simplify
     // the quadratic formula by doing some substitution and working it out
@@ -69,7 +69,7 @@ static f32 intersection_test(Ray ray, Sphere sphere)
 
 static f32 intersection_test(Ray ray, Plane plane)
 {
-    f32 tResult = F32_MIN;
+    f32 tResult = F32_MAX;
     
     f32 denominator = dot(ray.dir, plane.normal);
     if (denominator != 0.0f)
@@ -80,10 +80,8 @@ static f32 intersection_test(Ray ray, Plane plane)
     return tResult;
 }
 
-static f32 intersection_test(Ray ray, Rect3f rect)
+static bool hit_test(Ray ray, Rect3f rect)
 {
-    f32 tResult = F32_MIN;
-    
     // TODO: What should I do in the case where the ray origin is on a rectangle edge?
     
     f32 inverseDirX = 1.0f/ray.dir.x;
@@ -110,8 +108,8 @@ static f32 intersection_test(Ray ray, Rect3f rect)
     f32 tMin = MAX_VALUE(MAX_VALUE(tx0, ty0), tz0);
     f32 tMax = MIN_VALUE(MIN_VALUE(tx1, ty1), tz1);
     
-    if (tMin < tMax)
-        tResult = tMin;
+    if (tMin >= tMax)
+        return false;
     
-    return tResult;
+    return true;
 }
